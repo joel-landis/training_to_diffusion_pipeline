@@ -5,45 +5,14 @@ from pathlib import Path
 
 import numpy as np
 from ase.build import sort
-from ase.calculators.vasp import create_input
 from ase.io import write
 
 from pipeline import slurm_jobs
-from pipeline.stage_utils import load_site_config, write_csv, write_text
-
-REQUIRED = ("incar", "potcars", "ntasks", "time")
-DEFAULTS = {
-    "kpoints": None,
-    "sbatch_args": [],
-    "mem_per_cpu": "2G",
-    "sync_interval_s": 60,
-    "poll_interval_s": 60,
-}
+from pipeline.config import load_site_config
+from pipeline.io_utils import write_csv, write_text
 
 SCF_CONVERGED_MARKER = "aborting loop because EDIFF is reached"
 RELAX_CONVERGED_MARKER = "reached required accuracy - stopping structural energy minimisation"
-
-# VASP ignores misspelled INCAR tags; check them against ASE's VASP tag lists
-KNOWN_INCAR_TAGS = {tag.upper() for tag_list in (create_input.float_keys, create_input.exp_keys, create_input.string_keys,
-                                                 create_input.int_keys, create_input.list_int_keys, create_input.list_bool_keys,
-                                                 create_input.list_float_keys, create_input.special_keys, create_input.dict_keys,
-                                                 create_input.bool_keys)
-                    for tag in tag_list}
-
-
-def nested_setting_problems(vasp_settings):
-    """Problems inside the incar and kpoints tables: INCAR tags not in KNOWN_INCAR_TAGS, kpoints not {mesh, gamma}."""
-    problems = []
-    unknown_incar_tags = {tag.upper() for tag in vasp_settings.get(
-        "incar", {})} - KNOWN_INCAR_TAGS
-    if unknown_incar_tags:
-        problems.append(f"INCAR tags {sorted(unknown_incar_tags)} are not known VASP tags "
-                        f"(checked against ASE's lists in ase/calculators/vasp/create_input.py)")
-    explicit_kpoints = vasp_settings.get("kpoints")
-    if explicit_kpoints is not None and set(explicit_kpoints) != {"mesh", "gamma"}:
-        problems.append(
-            f"kpoints must have exactly the keys ['gamma', 'mesh'], got {sorted(explicit_kpoints)}")
-    return problems
 
 
 def format_incar_value(value):

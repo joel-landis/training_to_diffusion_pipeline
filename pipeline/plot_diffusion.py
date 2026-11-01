@@ -9,29 +9,15 @@ import pandas as pd
 
 from pipeline.plot_utils import (PLOT_STYLE, c_pt_ratio, carbon_systems, coordination_files_by_system, display_label, family_key,
                                  ordered_elements, parse_composition, save_plot, system_sort_key, systems_by_family)
-from pipeline.stage_utils import write_csv, write_json, write_merged_settings
-
-REQUIRED = ()
-USES_MACE_CALCULATOR = False
-DEFAULTS = {
-    "regimes": {},
-    "trend_regimes": {},
-    "highlights": [],
-    "coordination_files": {},
-}
+from pipeline.config import write_merged_settings
+from pipeline.io_utils import write_csv, write_json
+from pipeline.stage_specs import STAGES
 
 Y_LABEL = r"D [m$^{2}$/s]"
 RESULTS_COLUMNS = ["system", "regime", "d", "sem", "element"]
 # (centre, neighbour) pairs of the coordination panels: mean number of neighbour atoms around each centre atom
 CN_PAIRS = [("C", "C"), ("Pt", "C"), ("Pt", "Pt"),
             ("Ga", "Ga"), ("Pt", "Ga"), ("Ga", "C")]
-HIGHLIGHT_KEYS = {"name", "group", "systems", "elements"}
-
-
-def nested_setting_problems(settings):
-    """Problems inside the highlights list: every entry must have exactly the keys name, group, systems, elements."""
-    return [f"highlights entry {highlight} must have exactly the keys {sorted(HIGHLIGHT_KEYS)}"
-            for highlight in settings.get("highlights", []) if set(highlight) != HIGHLIGHT_KEYS]
 
 
 def group_name(system):
@@ -511,14 +497,14 @@ def write_coordination_correlations(coordination_means, output_dir):
     return correlations_path
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Diffusion summary plots from analyze_diffusion CSVs and analyze_coordination npz files in inputs.
 
     The system of an npz input is its stored system_name; coordination_files ({system: npz path}) adds or replaces entries.
     Returns the paths of all plots and of cn_correlations.csv.
     """
     merged_settings, _ = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["plot_diffusion"], settings, output_dir, inputs)
     unknown_inputs = [
         input_path for input_path in inputs if not input_path.endswith((".csv", ".npz"))]
     if unknown_inputs:

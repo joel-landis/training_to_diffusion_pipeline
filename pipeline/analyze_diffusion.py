@@ -10,37 +10,12 @@ from scipy.spatial.transform import Rotation
 from scipy.stats import linregress
 from tqdm import tqdm
 
-from pipeline.stage_utils import (cache_key, frames_from_ps, load_or_compute_cached, one_item_per_input, savefig_fsync,
-                                  standalone_settings, trajectory_cache_fields, write_csv, write_json,
-                                  write_merged_settings)
-
-REQUIRED = ("write_interval_fs", "equilibration_ps", "cache_dir", "species")
-USES_MACE_CALCULATOR = False
-DEFAULTS = {
-    "analysis_stride": 1,
-    "use_global_msd": False,
-    "breakpoints_ps": [],
-    "rigid_body_check": {"every_n_frames": 500, "rel_tolerance": 1e-6},
-}
-
-
-SPECIES_SETTING_KEYS = {"vacf_cutoff_ps", "vacf_epsilon",
-                        "n_samples_per_block", "fit_start_ps", "fit_width_ps"}
-
-
-def nested_setting_problems(settings):
-    """Problems inside the species and rigid_body_check tables: each must have exactly its expected keys."""
-    problems = []
-    for species, species_settings in settings.get("species", {}).items():
-        if set(species_settings) != SPECIES_SETTING_KEYS:
-            problems.append(
-                f"species.{species} must have exactly the keys {sorted(SPECIES_SETTING_KEYS)}, got {sorted(species_settings)}")
-    rigid_body_check = settings.get(
-        "rigid_body_check", DEFAULTS["rigid_body_check"])
-    if set(rigid_body_check) != set(DEFAULTS["rigid_body_check"]):
-        problems.append(
-            f"rigid_body_check must have exactly the keys {sorted(DEFAULTS['rigid_body_check'])}, got {sorted(rigid_body_check)}")
-    return problems
+from pipeline.analysis_utils import cache_key, frames_from_ps, load_or_compute_cached, trajectory_cache_fields
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_csv, write_json
+from pipeline.plot_utils import savefig_fsync
+from pipeline.stage_specs import STAGES
 
 
 def inertia_tensor(masses, positions_relative_to_center):
@@ -322,10 +297,7 @@ def plot_blocks(msd_blocks, block_fit_curves, block_diffusion_coefficients, glob
     savefig_fsync(figure, f"{output_prefix}_msd_curves_all_blocks.png")
 
 
-items = one_item_per_input
-
-
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Diffusion coefficient of each species from blocked MSD fits, for the whole trajectory and each piece between breakpoints.
 
     Intermediate arrays are cached in cache_dir, keyed by the parameters they depend on.
@@ -335,7 +307,7 @@ def run(settings, output_dir, inputs, mace_calculator):
         raise ValueError(
             f"analyze_diffusion needs exactly one trajectory, got {inputs}")
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["analyze_diffusion"], settings, output_dir, inputs)
     trajectory_path = os.path.abspath(inputs[0])
     os.makedirs(merged_settings["cache_dir"], exist_ok=True)
 
@@ -460,4 +432,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "analyze_diffusion", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("analyze_diffusion", settings, inputs)
+    run(settings, ".", inputs)

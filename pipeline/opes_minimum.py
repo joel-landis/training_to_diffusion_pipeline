@@ -7,15 +7,10 @@ from ase import units
 from ase.io import write
 from ase.io.trajectory import Trajectory
 
-from pipeline.stage_utils import one_item_per_input, standalone_settings, write_json, write_merged_settings
-
-REQUIRED = ("temperature_K", "colvar_stride")
-USES_MACE_CALCULATOR = False
-DEFAULTS = {
-    "colvar_file": "COLVAR",
-    "state_file": "STATE",
-    "fes_bins": None,
-}
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES
 
 FES_SCRIPT = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "third_party", "FES_from_State.py")
@@ -36,10 +31,7 @@ def read_plumed_table(path):
     return column_names, table_values
 
 
-items = one_item_per_input
-
-
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Frame of an OPES trajectory closest in CV space to the minimum of the FES reconstructed from STATE.
 
     STATE and COLVAR are read from the directory of the trajectory; colvar_stride = COLVAR rows per trajectory frame.
@@ -49,7 +41,7 @@ def run(settings, output_dir, inputs, mace_calculator):
         raise ValueError(
             f"opes_minimum needs exactly one trajectory, got {inputs}")
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["opes_minimum"], settings, output_dir, inputs)
     opes_run_dir = os.path.dirname(inputs[0])
 
     fes_file = f"{output_prefix}_fes.dat"
@@ -96,4 +88,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "opes_minimum", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("opes_minimum", settings, inputs)
+    run(settings, ".", inputs)

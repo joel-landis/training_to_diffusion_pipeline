@@ -4,22 +4,20 @@ import sys
 from ase.io import read, write
 
 from pipeline import vasp_jobs
-from pipeline.stage_utils import standalone_settings, unique_split_names, write_json, write_merged_settings
-
-REQUIRED = vasp_jobs.REQUIRED
-USES_MACE_CALCULATOR = False
-DEFAULTS = vasp_jobs.DEFAULTS
-nested_setting_problems = vasp_jobs.nested_setting_problems
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, unique_split_names
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """VASP single point of every frame, one SLURM job per frame; requires SCF convergence.
 
     Returns one <name>_<split>.xyz per input: extxyz with info["dft_energy"] (energy σ->0) and arrays["dft_forces"],
     without constraints. Also writes <name>_<split>_constraints.traj (same frames with constraints) and <name>_status.csv.
     """
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["label_vasp"], settings, output_dir, inputs)
     split_names = unique_split_names(inputs)
     frames_to_label = [(split, frame_index, frame) for split_path, split in zip(inputs, split_names)
                        for frame_index, frame in enumerate(read(split_path, index=":"))]
@@ -70,4 +68,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "label_vasp", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("label_vasp", settings, inputs)
+    run(settings, ".", inputs)

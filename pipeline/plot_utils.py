@@ -1,10 +1,12 @@
 import os
 import re
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 from ase.data import chemical_symbols
-
-from pipeline.stage_utils import savefig_fsync
 
 PLOT_STYLE = {
     # ACS figure guidelines: Arial/Helvetica, 8pt minimums
@@ -22,6 +24,14 @@ PLOT_STYLE = {
 }
 DPI = 600
 ELEMENT_ORDER = ["C", "Pt", "Ga"]
+
+
+def savefig_fsync(figure, path, **savefig_kwargs):
+    """Save figure to path, close it and fsync the file."""
+    figure.savefig(path, **savefig_kwargs)
+    plt.close(figure)
+    with open(path, "rb") as saved_file:
+        os.fsync(saved_file.fileno())
 
 
 def to_latex(text):

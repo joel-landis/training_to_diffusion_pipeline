@@ -8,7 +8,7 @@ model = "mh-1"
 head = "matpes_r2scan"
 device = "cuda"
 default_dtype = "float32"
-slurm = { time = "72:00:00" }
+slurm = { time = "72:00:00", gpus = 1 }
 temperature_K = 873.0
 timestep_fs = 1.0
 taut_fs = 20.0

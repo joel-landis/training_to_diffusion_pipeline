@@ -12,8 +12,12 @@ Requires Python 3.11 or newer.
 
 ```
 pip install -e .
+python -m pipeline.make_lookups
 cp site_config.template.toml site_config.toml
 ```
+
+`make_lookups` stores the MACE model names and VASP INCAR tags of the installed `mace-torch` and `ase` for the config
+check. Rerun it after updating either package; the check fails until then.
 
 Fill in `site_config.toml`:
 
@@ -52,7 +56,7 @@ model = "mh-1"
 head = "matpes_r2scan"
 device = "cuda"
 default_dtype = "float32"
-slurm = {}
+slurm = { gpus = 1 }
 
 [[stage]]
 module = "run_md"
@@ -71,15 +75,14 @@ nsteps = 2000
   file, or if it is both.
 - `model`, `head`, `device`, `default_dtype`, `dispersion`, `damping`, `dispersion_xc`: MACE calculator, passed to
   `mace_mp`.
-- `slurm`: run the stage as SLURM jobs. Without it, the stage runs in the orchestrator process. A stage with
-  `device = "cuda"` requests one GPU.
+- `slurm`: run the stage as SLURM jobs. Without it, the stage runs in the orchestrator process.
 
 | Key               | Default    | Meaning                                 |
 | ----------------- | ---------- | --------------------------------------- |
 | `time`            | `24:00:00` | `--time`                                |
 | `cpus_per_task`   | 1          | `--cpus-per-task`                       |
 | `mem_per_cpu`     | `6G`       | `--mem-per-cpu`                         |
-| `gpu_class`       | none       | `--gpus=<gpu_class>:1`                  |
+| `gpus`            | none       | `--gpus`, e.g. `1` or `"a100:1"`        |
 | `sbatch_args`     | `[]`       | extra `#SBATCH` lines                   |
 | `poll_interval_s` | 60         | seconds between job status checks       |
 

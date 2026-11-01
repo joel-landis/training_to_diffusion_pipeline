@@ -11,18 +11,10 @@ from ase.io import read
 from mace.calculators import mace_mp
 
 from pipeline.mlip_dynamics import run_bussi_md
-from pipeline.stage_utils import (mace_mp_kwargs, one_item_per_input, standalone_settings, write_json,
-                                  write_merged_settings)
-
-REQUIRED = ("temperature_K", "timestep_fs", "taut_fs",
-            "nsteps", "write_interval_fs", "log_interval_fs")
-USES_MACE_CALCULATOR = True
-DEFAULTS = {
-    "start_structure_format": None,
-    "seed": None,
-    "plumed": None,
-    "remove_rigid_body_interval_fs": 10.0,
-}
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, mace_calculator_kwargs
 
 ELEMENT_PLACEHOLDER = re.compile(r"@([A-Z][a-z]?)@")
 
@@ -60,16 +52,7 @@ def plumed_input_lines(template_path, atoms):
                 if line.strip() and not line.lstrip().startswith("#")]
 
 
-def items(settings, inputs):
-    """Fan-out hook: one item per input structure; a "plumed" table {label: template} gives each item its own template."""
-    stage_items = one_item_per_input(settings, inputs)
-    if isinstance(settings.get("plumed"), dict):
-        for item_label, item_settings, _ in stage_items:
-            item_settings["plumed"] = settings["plumed"][item_label]
-    return stage_items
-
-
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Bussi MD from one start structure, optionally biased with a PLUMED template.
 
     The start structure's velocities are not used. PLUMED output files (COLVAR, STATE, ...) are written to output_dir.
@@ -79,14 +62,15 @@ def run(settings, output_dir, inputs, mace_calculator):
         raise ValueError(
             f"run_md needs exactly one start structure, got {inputs}")
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["run_md"], settings, output_dir, inputs)
+    mace_calculator = mace_mp(**mace_calculator_kwargs(merged_settings))
 
     start_atoms = read(
         inputs[0], format=merged_settings["start_structure_format"])
     print(
         f"md: start {inputs[0]} ({len(start_atoms)} atoms, {start_atoms.get_chemical_formula()}), seed {merged_settings['seed']}", flush=True)
     print(
-        f"md: calculator {mace_mp_kwargs(merged_settings)}, plumed {merged_settings['plumed']}", flush=True)
+        f"md: calculator {mace_calculator_kwargs(merged_settings)}, plumed {merged_settings['plumed']}", flush=True)
     # output_prefix is made absolute because the PLUMED branch changes the working directory
     bussi_kwargs = dict(temperature_K=merged_settings["temperature_K"], timestep_fs=merged_settings["timestep_fs"],
                         taut_fs=merged_settings["taut_fs"], nsteps=merged_settings["nsteps"],
@@ -117,4 +101,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 
 if __name__ == "__main__":
     settings, inputs = standalone_settings(sys.argv[1], "run_md", sys.argv[2:])
-    run(settings, ".", inputs, mace_mp(**mace_mp_kwargs(settings)))
+    raise_on_problems("run_md", settings, inputs)
+    run(settings, ".", inputs)

@@ -9,21 +9,10 @@ from ase.io import write
 from mace.calculators import mace_mp
 
 from pipeline.mlip_dynamics import relax_with_bfgs, run_bussi_md
-from pipeline.stage_utils import mace_mp_kwargs, standalone_settings, write_json, write_merged_settings
-
-REQUIRED = ("composition", "radius", "temperature_K", "timestep_fs", "taut_fs", "equilibration_nsteps", "write_interval_fs",
-            "log_interval_fs")
-USES_MACE_CALCULATOR = True
-DEFAULTS = {
-    "c_c_separation": 3.5,
-    "cov_scale": 0.8,
-    "max_attempts": 50000,
-    "vacuum": 10.0,
-    "seed": None,
-    "fmax": 0.1,
-    "opt_max_steps": 200,
-    "remove_rigid_body_interval_fs": 10.0,
-}
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, mace_calculator_kwargs
 
 
 def build_dispersed_cluster(symbols, radius, c_c_separation, cov_scale, max_attempts, random_number_generator):
@@ -61,25 +50,19 @@ def build_dispersed_cluster(symbols, radius, c_c_separation, cov_scale, max_atte
     return Atoms(symbols, placed_positions)
 
 
-def items(settings, inputs):
-    """Fan-out hook: one item per entry of settings["clusters"]; the entry's keys override the stage settings. inputs is ignored."""
-    settings_without_clusters = {key: value for key,
-                                 value in settings.items() if key != "clusters"}
-    return [(cluster_label, {**settings_without_clusters, **cluster_overrides, "name": cluster_label}, [])
-            for cluster_label, cluster_overrides in settings["clusters"].items()]
-
-
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Build one cluster: random placement, BFGS relaxation, sorting by Z, Bussi equilibration.
 
     Returns [<output_dir>/<name>.traj], the equilibrated cluster centred with "vacuum" Å on each side.
     """
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["generate_cluster"], settings, output_dir, inputs)
+    mace_calculator = mace_mp(**mace_calculator_kwargs(merged_settings))
 
     print(f"cluster: composition {merged_settings['composition']}, radius {merged_settings['radius']} A, "
           f"seed {merged_settings['seed']}", flush=True)
-    print(f"cluster: calculator {mace_mp_kwargs(merged_settings)}", flush=True)
+    print(
+        f"cluster: calculator {mace_calculator_kwargs(merged_settings)}", flush=True)
 
     random_number_generator = np.random.default_rng(merged_settings["seed"])
     shuffled_symbols = [element for element,
@@ -117,4 +100,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "generate_cluster", sys.argv[2:])
-    run(settings, ".", inputs, mace_mp(**mace_mp_kwargs(settings)))
+    raise_on_problems("generate_cluster", settings, inputs)
+    run(settings, ".", inputs)

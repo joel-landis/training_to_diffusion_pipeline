@@ -4,22 +4,20 @@ import sys
 from ase.io import read, write
 
 from pipeline import vasp_jobs
-from pipeline.stage_utils import standalone_settings, unique_split_names, write_json, write_merged_settings
-
-REQUIRED = vasp_jobs.REQUIRED
-USES_MACE_CALCULATOR = False
-DEFAULTS = vasp_jobs.DEFAULTS
-nested_setting_problems = vasp_jobs.nested_setting_problems
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, unique_split_names
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Relax frames with VASP, one SLURM job per frame; requires ionic convergence.
 
     Per split, frames marked info["relaxed"] (e.g. by relax_mlip) are replaced by their VASP-relaxed structure; if none
     are marked, relaxed copies of all frames are appended. Returns one <name>_<split>.traj per input.
     """
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["relax_vasp"], settings, output_dir, inputs)
     split_names = unique_split_names(inputs)
 
     frames_by_split, frames_to_relax = {}, []
@@ -68,4 +66,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "relax_vasp", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("relax_vasp", settings, inputs)
+    run(settings, ".", inputs)

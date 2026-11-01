@@ -170,29 +170,29 @@ def test_slurm_resubmits_failed_once(tmp_path, monkeypatch):
 
 
 def test_presets():
-    from pipeline import orchestrator
+    from pipeline import config
     pipeline_config = {"preset": {"a": {"model": "m", "incar": {
         "ENCUT": 400, "EDIFF": 1e-5}}, "b": {"device": "cuda"}}}
     stage = {"module": "label_vasp", "presets": [
         "a", "b"], "incar": {"ENCUT": 300, "NSW": 3}}
-    assert orchestrator.merge_stage_settings(pipeline_config, stage) == {
+    assert config.merge_stage_settings(pipeline_config, stage) == {
         "module": "label_vasp", "model": "m", "device": "cuda", "incar": {"ENCUT": 300, "EDIFF": 1e-5, "NSW": 3}}
     assert pipeline_config["preset"]["a"]["incar"] == {
         "ENCUT": 400, "EDIFF": 1e-5}
 
 
 def test_slurm_gpu_request():
-    from pipeline import orchestrator
+    from pipeline import slurm_jobs
     md_settings = {"name": "production",
-                   "device": "cuda", "slurm": {"time": "72:00:00"}}
-    job_script = orchestrator.slurm_job_script(
+                   "slurm": {"time": "72:00:00", "gpus": 1}}
+    job_script = slurm_jobs.slurm_job_script(
         md_settings, "run/01_production/pt36c1", "production_pt36c1")
     assert "#SBATCH --gpus=1\n" in job_script and "#SBATCH --time=72:00:00" in job_script
-    job_script = orchestrator.slurm_job_script(
-        {**md_settings, "slurm": {"gpu_class": "rtx_4090"}}, "run/01_production/pt36c1", "production_pt36c1")
+    job_script = slurm_jobs.slurm_job_script(
+        {**md_settings, "slurm": {"gpus": "rtx_4090:1"}}, "run/01_production/pt36c1", "production_pt36c1")
     assert "#SBATCH --gpus=rtx_4090:1\n" in job_script
-    job_script = orchestrator.slurm_job_script(
-        {"name": "selection", "device": "cpu", "slurm": {}}, "run/02_selection", "selection")
+    job_script = slurm_jobs.slurm_job_script(
+        {"name": "selection", "slurm": {}}, "run/02_selection", "selection")
     assert "#SBATCH --time=24:00:00" in job_script and "--gpus" not in job_script
 
 
@@ -231,7 +231,8 @@ def test_plumed_input(tmp_path):
     template.write_text("c: COORDINATION GROUPA=@Ga@ GROUPB=@C@ R_0=2.7\n")
     with pytest.raises(ValueError, match="placeholder @Ga@"):
         run_md.plumed_input_lines(template, atoms)
-    stage_items = run_md.items({"name": "opes", "plumed": {
+    from pipeline.stage_specs import STAGES
+    stage_items = STAGES["run_md"]["items"]({"name": "opes", "plumed": {
                                "pt36c1": "ptc.dat", "pt18ga18c5": "ptgac.dat"}}, ["a/pt36c1.traj", "b/pt18ga18c5.traj"])
     assert [(label, item["plumed"]) for label, item, _ in stage_items] == [
         ("pt36c1", "ptc.dat"), ("pt18ga18c5", "ptgac.dat")]

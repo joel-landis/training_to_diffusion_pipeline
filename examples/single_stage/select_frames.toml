@@ -8,6 +8,6 @@ model = "mh-1"
 head = "matpes_r2scan"
 device = "cuda"
 default_dtype = "float32"
-slurm = {}
+slurm = { gpus = 1 }
 frames_per_traj = 2
 val_fraction = 0.5

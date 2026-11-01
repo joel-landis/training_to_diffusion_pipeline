@@ -5,7 +5,7 @@ model = "mh-1"
 head = "matpes_r2scan"
 device = "cuda"
 default_dtype = "float32"
-slurm = {}
+slurm = { gpus = 1 }
 
 [preset.md]
 temperature_K = 873.0

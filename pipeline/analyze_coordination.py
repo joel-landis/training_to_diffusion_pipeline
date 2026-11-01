@@ -7,15 +7,11 @@ from ase.data import covalent_radii
 from ase.io.trajectory import Trajectory
 from tqdm import tqdm
 
-from pipeline.stage_utils import (cache_key, frames_from_ps, load_or_compute_cached, one_item_per_input,
-                                  standalone_settings, trajectory_cache_fields, write_json, write_merged_settings)
-
-REQUIRED = ("write_interval_fs", "equilibration_ps", "cache_dir")
-USES_MACE_CALCULATOR = False
-DEFAULTS = {
-    "stride": 10,
-    "cutoff_factor": 1.1,
-}
+from pipeline.analysis_utils import cache_key, frames_from_ps, load_or_compute_cached, trajectory_cache_fields
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES
 
 
 def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_factor, write_interval_fs):
@@ -113,10 +109,7 @@ def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_fact
     return result
 
 
-items = one_item_per_input
-
-
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Coordination analysis of one trajectory, computed once per trajectory and settings and kept in cache_dir.
 
     Returns [<cache_dir>/coordination_<key>.npz].
@@ -125,7 +118,7 @@ def run(settings, output_dir, inputs, mace_calculator):
         raise ValueError(
             f"analyze_coordination needs exactly one trajectory, got {inputs}")
     merged_settings, _ = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["analyze_coordination"], settings, output_dir, inputs)
     trajectory_path = os.path.abspath(inputs[0])
     os.makedirs(merged_settings["cache_dir"], exist_ok=True)
 
@@ -147,4 +140,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "analyze_coordination", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("analyze_coordination", settings, inputs)
+    run(settings, ".", inputs)

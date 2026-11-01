@@ -2,11 +2,11 @@ import os
 import subprocess
 import sys
 
-from pipeline.stage_utils import standalone_settings, unique_split_names, write_json, write_merged_settings
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, unique_split_names
 
-REQUIRED = ("device", "mace_args")
-USES_MACE_CALCULATOR = False
-DEFAULTS = {}
 RESERVED_MACE_ARGS = {"train_file", "valid_file", "device"}
 
 
@@ -25,14 +25,14 @@ def mace_command_line_flags(mace_args):
     return command_line_flags
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Fine-tune MACE with python -m mace.cli.run_train in output_dir.
 
     inputs: exactly one *_train and one *_val extxyz file. mace_args must contain "name"; train_file, valid_file and device
     are set here. Returns [<output_dir>/<mace_args.name>.model].
     """
     merged_settings, _ = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["finetune_mace"], settings, output_dir, inputs)
 
     reserved_keys_given = RESERVED_MACE_ARGS & set(
         merged_settings["mace_args"])
@@ -67,4 +67,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "finetune_mace", sys.argv[2:])
-    run(settings, ".", inputs, None)
+    raise_on_problems("finetune_mace", settings, inputs)
+    run(settings, ".", inputs)

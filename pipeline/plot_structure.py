@@ -9,13 +9,9 @@ import pandas as pd
 
 from pipeline.plot_utils import (PLOT_STYLE, c_metal_label, c_metal_ratio, carbon_systems, coordination_files_by_system, display_label,
                                  element_color, ordered_elements, parse_composition, save_plot, systems_by_family)
-from pipeline.stage_utils import write_json, write_merged_settings
-
-REQUIRED = ()
-USES_MACE_CALCULATOR = False
-DEFAULTS = {
-    "coordination_files": {},
-}
+from pipeline.config import write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES
 
 PEAK_BIN_WIDTH = 0.003
 PEAK_RANGE = (1.0, 4.0)
@@ -195,14 +191,14 @@ def plot_com_distance_densities(npz_path_by_system, output_dir):
     return plot_paths
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Structure plots from analyze_coordination npz files in inputs.
 
     The system of an npz input is its stored system_name; coordination_files ({system: npz path}) adds or replaces entries.
     Returns the paths of all plots.
     """
     merged_settings, _ = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["plot_structure"], settings, output_dir, inputs)
     unknown_inputs = [
         input_path for input_path in inputs if not input_path.endswith(".npz")]
     if unknown_inputs:

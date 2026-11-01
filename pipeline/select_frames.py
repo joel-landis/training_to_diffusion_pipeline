@@ -9,17 +9,10 @@ from ase.io.trajectory import Trajectory
 from mace.calculators import mace_mp
 from torch_geometric.nn import fps
 
-from pipeline.stage_utils import mace_mp_kwargs, standalone_settings, write_json, write_merged_settings
-
-REQUIRED = ("frames_per_traj", "device")
-USES_MACE_CALCULATOR = True
-DEFAULTS = {
-    "thin_to": 3000,
-    "atoms_per_frame_factor": 5,
-    "val_fraction": 0.2,
-    "seed": 42,
-    "exclude_provenance": None,
-}
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_json
+from pipeline.stage_specs import STAGES, mace_calculator_kwargs
 
 
 def thin_trajectory(trajectory_path, thin_to):
@@ -83,14 +76,15 @@ def pick_frames_by_fps(atom_descriptors_per_frame, n_frames, atoms_per_frame_fac
     return picked_atom_by_frame
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Select frames_per_traj frames per input trajectory by FPS on MACE descriptors and split them into train and val.
 
     Frames listed in exclude_provenance, the provenance CSV of an earlier selection, are not picked again.
     Returns [<name>_train.traj, <name>_val.traj]; also writes <name>_provenance.csv.
     """
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["select_frames"], settings, output_dir, inputs)
+    mace_calculator = mace_mp(**mace_calculator_kwargs(merged_settings))
 
     excluded_trajectory_frames = set()
     if merged_settings["exclude_provenance"] is not None:
@@ -144,4 +138,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "select_frames", sys.argv[2:])
-    run(settings, ".", inputs, mace_mp(**mace_mp_kwargs(settings)))
+    raise_on_problems("select_frames", settings, inputs)
+    run(settings, ".", inputs)

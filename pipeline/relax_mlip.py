@@ -6,25 +6,21 @@ from ase.io import read, write
 from mace.calculators import mace_mp
 
 from pipeline.mlip_dynamics import relax_with_bfgs
-from pipeline.stage_utils import (mace_mp_kwargs, standalone_settings, unique_split_names, write_csv, write_json,
-                                  write_merged_settings)
-
-REQUIRED = ()
-USES_MACE_CALCULATOR = True
-DEFAULTS = {
-    "fmax": 0.1,
-    "opt_max_steps": 500,
-}
+from pipeline.checks import raise_on_problems
+from pipeline.config import standalone_settings, write_merged_settings
+from pipeline.io_utils import write_csv, write_json
+from pipeline.stage_specs import STAGES, mace_calculator_kwargs, unique_split_names
 
 
-def run(settings, output_dir, inputs, mace_calculator):
+def run(settings, output_dir, inputs):
     """Relax a copy of every frame whose largest MACE force exceeds fmax, and append the copies to their split.
 
     Returns one <name>_<split>.traj per input: the original frames, then the relaxed copies marked info["relaxed"] = "mlip".
     Also writes <name>_relax.csv and the BFGS files in <output_dir>/<split>/.
     """
     merged_settings, output_prefix = write_merged_settings(
-        sys.modules[__name__], settings, output_dir, inputs)
+        STAGES["relax_mlip"], settings, output_dir, inputs)
+    mace_calculator = mace_mp(**mace_calculator_kwargs(merged_settings))
 
     relax_rows, outputs = [], []
     for split_path, split in zip(inputs, unique_split_names(inputs)):
@@ -63,4 +59,5 @@ def run(settings, output_dir, inputs, mace_calculator):
 if __name__ == "__main__":
     settings, inputs = standalone_settings(
         sys.argv[1], "relax_mlip", sys.argv[2:])
-    run(settings, ".", inputs, mace_mp(**mace_mp_kwargs(settings)))
+    raise_on_problems("relax_mlip", settings, inputs)
+    run(settings, ".", inputs)

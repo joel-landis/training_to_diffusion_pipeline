@@ -1,11 +1,45 @@
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from pipeline.stage_utils import write_text
+from pipeline.config import load_site_config
+from pipeline.io_utils import write_text
 
 ACTIVE_STATES = {"PENDING", "RUNNING", "REQUEUED", "RESIZING", "SUSPENDED"}
+DEFAULT_TIME = "24:00:00"
+
+
+def slurm_job_script(settings, job_dir, job_name):
+    """job.sh text for running one stage item as a SLURM job.
+
+    job_dir holds stage_input.json and receives the SLURM logs; the job_setup lines of site_config.toml run before the
+    stage command.
+    """
+    slurm_settings = settings["slurm"]
+    job_dir_absolute = os.path.abspath(job_dir)
+    job_script_lines = [
+        "#!/usr/bin/env bash",
+        f"#SBATCH --job-name={job_name}",
+        "#SBATCH --ntasks=1",
+        f"#SBATCH --cpus-per-task={slurm_settings.get('cpus_per_task', 1)}",
+        f"#SBATCH --mem-per-cpu={slurm_settings.get('mem_per_cpu', '6G')}",
+        f"#SBATCH --time={slurm_settings.get('time', DEFAULT_TIME)}",
+        # relative paths refer to the orchestrator's working directory, not job_dir
+        f"#SBATCH --chdir={os.getcwd()}",
+        f"#SBATCH --output={job_dir_absolute}/slurm_%j.out",
+        f"#SBATCH --error={job_dir_absolute}/slurm_%j.err",
+    ]
+    if "gpus" in slurm_settings:
+        job_script_lines.append(f"#SBATCH --gpus={slurm_settings['gpus']}")
+    job_script_lines += [
+        f"#SBATCH {extra_sbatch_line}" for extra_sbatch_line in slurm_settings.get("sbatch_args", [])]
+    job_script_lines.append("set -euo pipefail")
+    job_script_lines += load_site_config()["job_setup"]
+    job_script_lines.append(
+        f"{sys.executable} -m pipeline.orchestrator --run-stage {job_dir}")
+    return "\n".join(job_script_lines) + "\n"
 
 
 def submit_job(job_dir):
