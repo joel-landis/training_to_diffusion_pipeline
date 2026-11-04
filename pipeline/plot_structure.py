@@ -11,7 +11,7 @@ from pipeline.plot_utils import (PLOT_STYLE, c_metal_label, c_metal_ratio, carbo
 
 PEAK_BIN_WIDTH = 0.003
 PEAK_RANGE = (1.0, 4.0)
-# a population with fewer Pt-Pt pairs per frame on average gives no reliable peak and is left out of the plot
+# a population with fewer pairs per frame on average gives no reliable peak and is left out of the plot
 MIN_PAIR_COUNT = 5
 ROLLING_WINDOW_PS = 10.0
 COM_BIN_WIDTH = 0.1
@@ -68,7 +68,6 @@ def plot_pair_distance_peaks(npz_path_by_system, output_dir):
                 npz_path_by_system[system], first_element, second_element) for system in systems}
             pair_name = first_element if first_element == second_element else "-".join(
                 ordered_elements([first_element, second_element])) + " pair"
-            # bond length next to carbon and away from it, against carbon loading
             figure, ax = plt.subplots(figsize=(7, 3.5))
             for population, color, label in (("c_bonded", "tab:orange", f"C bonded {pair_name}"),
                                              ("none", "tab:blue", f"Non C bonded {pair_name}")):
@@ -188,8 +187,6 @@ def plot_com_distance_densities(npz_path_by_system, output_dir):
 
 
 if __name__ == "__main__":
-    # Standalone use without the orchestrator: structure plots from analyze_coordination npz files into output_dir.
-    # Edit the paths and calls below; comment out a call to skip that group of plots.
     output_dir = "structure_plots"
     npz_path_by_system = {
         "pt36": "<path/to/pt36_coordination.npz>",
@@ -207,11 +204,8 @@ if __name__ == "__main__":
     }
 
     with plt.rc_context(PLOT_STYLE):
-        # pair_rdf_peak/<family>_<a>_<b>.png
         plot_pair_distance_peaks(npz_path_by_system, output_dir)
-        # metal_per_c/<family>.png
         plot_metal_atoms_per_c(npz_path_by_system, output_dir)
-        # com_distance_time/<system>.png; for npz files without frame_interval_fs pass frame_interval_ps, e.g. 0.1
+        # npz files without frame_interval_fs need frame_interval_ps, e.g. 0.1
         plot_com_distance_traces(npz_path_by_system, output_dir)
-        # com_distance_density/<family>.png
         plot_com_distance_densities(npz_path_by_system, output_dir)

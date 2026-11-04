@@ -51,13 +51,11 @@ def generate_clusters(output_dir, inputs, *, name, composition, radius, temperat
                         count in composition.items() for _ in range(count)]
     random_number_generator.shuffle(shuffled_symbols)
 
-    # build
     cluster = build_dispersed_cluster(shuffled_symbols, radius, c_c_separation, cov_scale, max_attempts,
                                       random_number_generator)
     cluster.center(vacuum=vacuum)
     write(f"{output_prefix}_pre_opt.xyz", cluster, format="xyz")
 
-    # relax
     bfgs_converged, bfgs_steps, final_max_force = relax_with_bfgs(
         cluster, mace_calculator, fmax, opt_max_steps, output_prefix, f"{name} BFGS")
     print(f"BFGS converged to fmax={fmax}: {bfgs_converged} ({bfgs_steps} steps, "
@@ -67,7 +65,6 @@ def generate_clusters(output_dir, inputs, *, name, composition, radius, temperat
     sorted_cluster.center(vacuum=vacuum)
     write(f"{output_prefix}_relaxed.traj", sorted_cluster)
 
-    # equilibrate
     run_bussi_md(sorted_cluster, mace_calculator, temperature_K=temperature_K, timestep_fs=timestep_fs, taut_fs=taut_fs,
                  nsteps=equilibration_nsteps, write_interval_fs=write_interval_fs, log_interval_fs=log_interval_fs,
                  remove_rigid_body_interval_fs=remove_rigid_body_interval_fs,
@@ -155,7 +152,7 @@ def pick_frames_by_fps(atom_descriptors_per_frame, n_frames, atoms_per_frame_fac
                             n_frames, len(stacked_atom_descriptors))
     descriptor_tensor = torch.tensor(stacked_atom_descriptors, device=device)
     picked_atom_by_frame = {}
-    # deterministic start at the first atom
+    # fixed start, so the same descriptors always give the same selection
     for fps_row in fps(descriptor_tensor, ratio=n_atoms_to_sample / len(stacked_atom_descriptors), random_start=False).cpu().numpy():
         frame_index = int(frame_index_of_row[fps_row])
         if frame_index in excluded_frame_indices or frame_index in picked_atom_by_frame:
@@ -245,7 +242,6 @@ def finetune(output_dir, inputs, *, name, device, mace_args):
     inputs: exactly one *_train and one *_val extxyz file. mace_args must contain "name"; train_file, valid_file and device
     are set here.
     """
-    # check
     reserved_keys_given = {"train_file", "valid_file", "device"} & set(mace_args)
     if reserved_keys_given:
         raise ValueError(
@@ -257,7 +253,7 @@ def finetune(output_dir, inputs, *, name, device, mace_args):
     train_file, valid_file = (os.path.abspath(
         inputs[split_names.index(split)]) for split in ("train", "val"))
 
-    # assemble: true -> bare --key, false -> omitted, anything else -> --key str(value). MACE options parsed with
+    # true -> bare --key, false -> omitted, anything else -> --key str(value). MACE options parsed with
     # str2bool (e.g. multiheads_finetuning) need the string "True"/"False"; a TOML boolean is only right for store_true
     # options (e.g. restart_latest).
     run_train_command = [sys.executable, "-m", "mace.cli.run_train", "--train_file", train_file,
@@ -269,7 +265,6 @@ def finetune(output_dir, inputs, *, name, device, mace_args):
             run_train_command += [f"--{key}", str(value)]
     print(f"{name}: {' '.join(run_train_command)}", flush=True)
 
-    # run
     subprocess.run(run_train_command, cwd=output_dir, check=True)
     model_path = os.path.join(output_dir, f"{mace_args['name']}.model")
     if not os.path.exists(model_path):

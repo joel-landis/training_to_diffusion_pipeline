@@ -364,7 +364,6 @@ def plot_highlights(diffusion_results, regimes, highlights, output_dir):
         if unknown_categories:
             raise ValueError(
                 f"highlight {highlight['name']}: {sorted(unknown_categories)} are not bars of group {highlight['group']}")
-        # one family and element emphasised, all others faded for context
         alpha_map = {
             category: 1.0 if category in highlight["systems"] else 0.2 for category in order}
         plot_paths.append(plot_bar_chart(bars, groups[highlight["group"]], regimes,
@@ -468,7 +467,6 @@ def plot_coordination_trends(diffusion_results, coordination_means, regimes, tre
         for element, trends, file_name in variants:
             element_trends = trends[(
                 trends["element"] == element) & trends["system"].isin(family_systems)]
-            # D (left axis) and mean coordination number (right axis) against C/Pt, to compare trends
             plot_paths.append(plot_coordination_twin_chart(element_trends, family_coordination, cn_columns,
                                                            os.path.join(output_dir, "coordination", file_name)))
     return plot_paths
@@ -495,8 +493,6 @@ def write_coordination_correlations(coordination_means, output_dir):
 
 
 if __name__ == "__main__":
-    # Standalone use without the orchestrator: reproduces the plots of the diffusion report into output_dir.
-    # Edit the paths, settings and calls below; comment out a call to skip that group of plots.
     output_dir = "diffusion_plots"
     diffusion_results = load_diffusion_results(["<path/to/results.csv>"])
     coordination_means = load_coordination_means({
@@ -550,21 +546,15 @@ if __name__ == "__main__":
             "systems": pt36ga36_pt72ga72_families, "elements": ["Ga"]},
         {"name": "fig21_pt96ga48", "group": "ptga",
             "systems": pt96ga48_family, "elements": ["C", "Pt", "Ga"]},
-        # own highlight: any bars of a group ("pt", "ptga" or "all") and any elements, e.g. Pt of the bare clusters across all systems
         {"name": "bare_clusters_pt", "group": "all", "systems": ["pt36", "pt72", "pt144", "pt18ga18", "pt36ga36", "pt72ga72", "pt96ga48"],
          "elements": ["Pt"]},
     ]
 
     with plt.rc_context(PLOT_STYLE):
-        # overview/by_system/ and overview/by_c_pt_ratio/: pt, ptga and all systems
         plot_overviews(diffusion_results, regimes, trend_regimes, output_dir)
-        # highlighted/<name>.png for every entry of highlights
         plot_highlights(diffusion_results, regimes, highlights, output_dir)
-        # ratio/dc_over_dpt_<family>.png
         plot_diffusion_ratios(diffusion_results, regimes,
                               trend_regimes, output_dir)
-        # coordination/<family>_d_<element>.png for the families in coordination_means
         plot_coordination_trends(
             diffusion_results, coordination_means, regimes, trend_regimes, output_dir)
-        # coordination/cn_correlations.csv
         write_coordination_correlations(coordination_means, output_dir)
