@@ -28,20 +28,28 @@ def run_work_unit(task, settings, unit_dir, inputs):
     return outputs
 
 
-def check_pipeline(pipeline_config):
+def split_stages(pipeline_config):
+    """(task, settings, inputs) of every [[stage]], with its presets merged in; inputs is None if the stage has none."""
+    pipeline_stages = []
+    for stage_config in pipeline_config["stage"]:
+        stage_settings = merge_stage_settings(pipeline_config, stage_config)
+        task = stage_settings.pop("task")
+        pipeline_stages.append(
+            (task, stage_settings, stage_settings.pop("inputs", None)))
+    return pipeline_stages
+
+
+def check_pipeline(pipeline_stages, run_dir):
     """Check every stage before anything runs and raise with the full list of problems."""
-    run_dir = os.path.abspath(pipeline_config["run_dir"])
+    run_dir = os.path.abspath(run_dir)
     problems = []
     earlier_stage_names = []
-    for stage_index, stage_config in enumerate(pipeline_config["stage"]):
-        stage_settings = merge_stage_settings(pipeline_config, stage_config)
+    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages):
         stage_label = f"[{stage_index:02d}_{stage_settings.get('name')}]"
-        task = stage_settings.pop("task")
-        explicit_inputs = stage_settings.pop("inputs", [])
         referenced_stage_names = [
-            entry for entry in explicit_inputs if entry in earlier_stage_names]
+            entry for entry in explicit_inputs or [] if entry in earlier_stage_names]
         input_files = [
-            entry for entry in explicit_inputs if entry not in earlier_stage_names]
+            entry for entry in explicit_inputs or [] if entry not in earlier_stage_names]
         ambiguous_inputs = [
             entry for entry in referenced_stage_names if os.path.exists(entry)]
         if ambiguous_inputs:
@@ -122,15 +130,13 @@ def run_pipeline(pipeline_config):
 
     A stage gets its "inputs", with names of earlier stages replaced by their outputs, else the previous stage's outputs.
     """
-    check_pipeline(pipeline_config)
+    pipeline_stages = split_stages(pipeline_config)
+    check_pipeline(pipeline_stages, pipeline_config["run_dir"])
     previous_stage_outputs = []
     outputs_by_stage_name = {}
     # inputs are compared by path, not content: once a stage has run, every later stage must rerun
     earlier_stage_ran = False
-    for stage_index, stage_config in enumerate(pipeline_config["stage"]):
-        stage_settings = merge_stage_settings(pipeline_config, stage_config)
-        task = stage_settings.pop("task")
-        explicit_inputs = stage_settings.pop("inputs", None)
+    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages):
         # without "inputs" the stage takes the previous stage's outputs; in "inputs", the name of an earlier stage
         # stands for that stage's outputs and any other entry is a file path
         stage_inputs = previous_stage_outputs if explicit_inputs is None else [
