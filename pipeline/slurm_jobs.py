@@ -9,6 +9,8 @@ from pipeline.io_utils import write_text
 
 ACTIVE_STATES = {"PENDING", "RUNNING", "REQUEUED", "RESIZING", "SUSPENDED"}
 DEFAULT_TIME = "24:00:00"
+SACCT_ATTEMPTS = 10
+SACCT_RETRY_INTERVAL_S = 60
 
 
 def slurm_job_script(settings, job_dir, job_name):
@@ -55,12 +57,28 @@ def submit_job(job_dir):
 
 
 def query_job_states(job_ids):
-    """{job ID: SLURM state} from sacct; a job that sacct does not know yet is missing."""
-    # with -j, sacct searches from Unix epoch 0 instead of only jobs since midnight
-    sacct_result = subprocess.run(["sacct", "-X", "-n", "-P", "-o", "JobID,State",
-                                  "-j", ",".join(job_ids)], capture_output=True, text=True)
-    if sacct_result.returncode != 0:
-        raise RuntimeError(f"sacct failed: {sacct_result.stderr.strip()}")
+    """{job ID: SLURM state} from sacct; a job that sacct does not know yet is missing.
+
+    A failed sacct call is retried, since sacct depends on the accounting database. After SACCT_ATTEMPTS failures in a
+    row, all job_ids are cancelled with scancel and the call raises.
+    """
+    for attempt_number in range(1, SACCT_ATTEMPTS + 1):
+        # with -j, sacct searches from Unix epoch 0 instead of only jobs since midnight
+        sacct_result = subprocess.run(["sacct", "-X", "-n", "-P", "-o", "JobID,State",
+                                      "-j", ",".join(job_ids)], capture_output=True, text=True)
+        if sacct_result.returncode == 0:
+            break
+        print(f"WARNING: sacct failed (attempt {attempt_number} of {SACCT_ATTEMPTS}): {sacct_result.stderr.strip()}",
+              file=sys.stderr, flush=True)
+        time.sleep(SACCT_RETRY_INTERVAL_S)
+    else:
+        # without sacct no job can be followed any more; cancel them instead of leaving them to run unobserved
+        scancel_result = subprocess.run(
+            ["scancel", *job_ids], capture_output=True, text=True)
+        raise RuntimeError(f"sacct seems to be broken: it did not respond for {SACCT_ATTEMPTS * SACCT_RETRY_INTERVAL_S // 60} "
+                           f"minutes ({SACCT_ATTEMPTS} failed calls), last error: {sacct_result.stderr.strip()}. "
+                           f"Cancelled jobs {', '.join(job_ids)}"
+                           + (f"; scancel reported: {scancel_result.stderr.strip()}" if scancel_result.stderr.strip() else ""))
     state_by_job_id = {}
     for sacct_line in sacct_result.stdout.splitlines():
         job_id, state_text = sacct_line.split("|")
