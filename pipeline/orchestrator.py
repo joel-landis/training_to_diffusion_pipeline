@@ -146,9 +146,8 @@ def run_pipeline(pipeline_config):
         stage_label = f"[{stage_index:02d}_{stage_settings['name']}]"
         stage_outputs_file = os.path.join(stage_dir, "outputs.json")
         stage_input_file = os.path.join(stage_dir, "stage_input.json")
-        # JSON round trip, so it compares equal to the stage_input.json read from disk
-        current_stage_input = json.loads(json.dumps(
-            {"task": task, "settings": stage_settings, "inputs": stage_inputs}))
+        current_stage_input = {"task": task,
+                               "settings": stage_settings, "inputs": stage_inputs}
         recorded_stage_input = json.loads(
             Path(stage_input_file).read_text()) if os.path.exists(stage_input_file) else None
         if not earlier_stage_ran and recorded_stage_input == current_stage_input:
