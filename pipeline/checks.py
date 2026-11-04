@@ -1,20 +1,24 @@
-"""Settings checks of every stage, run before anything executes; stages.py is read as source, not imported.
+"""Settings checks of every stage, run before anything executes.
 
-Version-dependent name lists (MACE foundation models, VASP INCAR tags) come from lookups.json, written by
-python -m pipeline.make_lookups for the installed mace-torch and ase versions.
+The MACE foundation model names and the VASP INCAR tags come from the installed mace-torch and ase.
 """
-import ast
-import json
+import inspect
 import os
-from importlib.metadata import version
-from pathlib import Path
 
+from ase.calculators.vasp import create_input
+from mace.calculators.foundations_models import mace_mp_names
+
+from pipeline import stages
 from pipeline.config import load_site_config
 from pipeline.stage_specs import WORK_UNITS
 from pipeline.vasp_jobs import VASP_DEFAULTS, VASP_REQUIRED
 
-LOOKUPS_PATH = Path(__file__).resolve().parent / "lookups.json"
-STAGES_PATH = Path(__file__).resolve().parent / "stages.py"
+# every INCAR tag ASE writes; VASP ignores a misspelled tag without warning
+KNOWN_INCAR_TAGS = {tag.upper() for tag_list in (create_input.float_keys, create_input.exp_keys, create_input.string_keys,
+                                                 create_input.int_keys, create_input.list_int_keys, create_input.list_bool_keys,
+                                                 create_input.list_float_keys, create_input.special_keys, create_input.dict_keys,
+                                                 create_input.bool_keys)
+                    for tag in tag_list}
 # keyword arguments of mace_mp the MACE stages pass on; mace_mp hands unknown keys silently to ASE's Calculator.set
 MACE_CALCULATOR_KEYS = ("model", "device", "default_dtype",
                         "head", "dispersion", "damping", "dispersion_xc")
@@ -29,19 +33,6 @@ DIFFUSION_SPECIES_KEYS = {"vacf_cutoff_ps", "vacf_epsilon",
 HIGHLIGHT_KEYS = {"name", "group", "systems", "elements"}
 
 
-def load_lookup(distribution):
-    """Entry of lookups.json for a distribution; raises if the file is missing or was written for another installed version."""
-    if not LOOKUPS_PATH.exists():
-        raise FileNotFoundError(
-            f"{LOOKUPS_PATH} not found; run python -m pipeline.make_lookups")
-    lookup = json.loads(LOOKUPS_PATH.read_text())[distribution]
-    installed_version = version(distribution)
-    if lookup["version"] != installed_version:
-        raise RuntimeError(f"{LOOKUPS_PATH} was written for {distribution} {lookup['version']}, installed is "
-                           f"{installed_version}; run python -m pipeline.make_lookups")
-    return lookup
-
-
 def missing_files(paths, run_dir):
     """The paths that do not exist, except paths inside run_dir, which earlier stages may still write; run_dir None exempts nothing."""
     run_dir_absolute = None if run_dir is None else os.path.abspath(run_dir)
@@ -52,16 +43,17 @@ def missing_files(paths, run_dir):
 
 
 def stage_parameters(task):
-    """({setting: default or REQUIRED} of the stage's entry in stages.py, name of its ** parameter or None),
-    read from the source without importing it; None if stages.py has no such entry."""
-    stage_functions = {node.name: node for node in ast.parse(STAGES_PATH.read_text()).body
-                       if isinstance(node, ast.FunctionDef)}
-    if task not in stage_functions:
+    """({setting: default or REQUIRED} of the task's function in stages.py, name of its ** parameter or None);
+    None if stages.py defines no such function."""
+    stage_function = getattr(stages, task, None)
+    if not inspect.isfunction(stage_function) or stage_function.__module__ != stages.__name__:
         return None
-    arguments = stage_functions[task].args
-    parameter_defaults = {argument.arg: REQUIRED if default is None else ast.literal_eval(default)
-                          for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults)}
-    return parameter_defaults, None if arguments.kwarg is None else arguments.kwarg.arg
+    parameters = inspect.signature(stage_function).parameters.values()
+    parameter_defaults = {parameter.name: REQUIRED if parameter.default is parameter.empty else parameter.default
+                          for parameter in parameters if parameter.kind is parameter.KEYWORD_ONLY}
+    backend_parameter = next(
+        (parameter.name for parameter in parameters if parameter.kind is parameter.VAR_KEYWORD), None)
+    return parameter_defaults, backend_parameter
 
 
 def key_problems(task, settings):
@@ -89,7 +81,7 @@ def key_problems(task, settings):
 def mace_model_problems(settings, run_dir):
     """A model that is neither a MACE foundation model name nor a URL must be an existing file."""
     model = settings.get("model")
-    if model is None or str(model).startswith("https:") or model in load_lookup("mace-torch")["mace_mp_names"]:
+    if model is None or str(model).startswith("https:") or model in mace_mp_names:
         return []
     return [f"file not found: {path}" for path in missing_files([model], run_dir)]
 
@@ -113,7 +105,7 @@ def vasp_problems(settings, run_dir):
     """INCAR tags that ASE does not know (VASP ignores misspelled tags), kpoints not {mesh, gamma}, missing POTCARs."""
     problems = []
     unknown_incar_tags = {tag.upper() for tag in settings.get(
-        "incar", {})} - set(load_lookup("ase")["incar_tags"])
+        "incar", {})} - KNOWN_INCAR_TAGS
     if unknown_incar_tags:
         problems.append(f"INCAR tags {sorted(unknown_incar_tags)} are not known VASP tags "
                         f"(checked against ASE's lists in ase/calculators/vasp/create_input.py)")
@@ -171,7 +163,7 @@ def check_stage(task, settings, input_files, run_dir=None):
     required to exist yet.
     """
     if stage_parameters(task) is None:
-        return [f"unknown task {task!r}; it is not a function of {STAGES_PATH}"]
+        return [f"unknown task {task!r}; it is not a function of {stages.__file__}"]
     problems = [
         f"file not found: {path}" for path in missing_files(input_files, run_dir)]
     unit_settings_list = [settings]

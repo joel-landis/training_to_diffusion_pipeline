@@ -2,6 +2,5 @@ __pycache__/
 .pytest_cache/
 run_*/
 site_config.toml
-pipeline/lookups.json
 *.egg-info/
 tests/fixtures/diffusion/

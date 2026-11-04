@@ -12,12 +12,8 @@ Requires Python 3.11 or newer.
 
 ```
 pip install -e .
-python -m pipeline.make_lookups
 cp site_config.template.toml site_config.toml
 ```
-
-`make_lookups` stores the MACE model names and VASP INCAR tags of the installed `mace-torch` and `ase` for the config
-check. Rerun it after updating either package; the check fails until then.
 
 Fill in `site_config.toml`:
 
