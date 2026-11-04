@@ -1,6 +1,6 @@
 """Entry functions of the pipeline stages, one per operation (the TOML stage's task value).
 
-Each takes the item's output directory, its input paths and the stage settings as keyword arguments, and returns the
+Each takes the work unit's output directory, its input paths and the stage settings as keyword arguments, and returns the
 output paths. Building blocks shared by several stages live in the backend modules.
 """
 import os

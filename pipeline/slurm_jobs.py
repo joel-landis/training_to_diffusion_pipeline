@@ -12,7 +12,7 @@ DEFAULT_TIME = "24:00:00"
 
 
 def slurm_job_script(settings, job_dir, job_name):
-    """job.sh text for running one stage item as a SLURM job.
+    """job.sh text for running one stage work unit as a SLURM job.
 
     job_dir holds stage_input.json and receives the SLURM logs; the job_setup lines of site_config.toml run before the
     stage command.

@@ -37,18 +37,18 @@ def copy_structures(tmp_path):
 def test_generate_cluster(tmp_path):
     shutil.copy(HERE / "single" / "gen.toml", tmp_path)
     run_python(["-m", "pipeline.orchestrator", "gen.toml"], tmp_path)
-    item_dir = tmp_path / "run" / "00_cluster" / "cluster"
+    unit_dir = tmp_path / "run" / "00_cluster" / "cluster"
     for name in ("cluster.traj", "cluster_relaxed.traj", "cluster_equilibration.traj", "outputs.json"):
-        assert (item_dir / name).exists(), name
+        assert (unit_dir / name).exists(), name
 
 
 def test_run_md(tmp_path):
     shutil.copy(HERE / "single" / "md.toml", tmp_path)
     copy_structures(tmp_path)
     run_python(["-m", "pipeline.orchestrator", "md.toml"], tmp_path)
-    item_dir = tmp_path / "run" / "00_md" / "pt36c1_start"
+    unit_dir = tmp_path / "run" / "00_md" / "pt36c1_start"
     for name in ("pt36c1_start.traj", "pt36c1_start.log", "outputs.json"):
-        assert (item_dir / name).exists(), name
+        assert (unit_dir / name).exists(), name
 
 
 def test_select_frames(tmp_path):
@@ -121,7 +121,7 @@ def test_rerun_changed_settings(tmp_path):
     assert not (run_dir / "00_equilibration_old_2").exists()
 
 
-def test_failed_item_stops_pipeline(tmp_path):
+def test_failed_work_unit_stops_pipeline(tmp_path):
     orchestrator_command = [
         sys.executable, "-m", "pipeline.orchestrator", copy_config("test_fail.toml", tmp_path)]
     cluster = tmp_path / "run_fail" / "00_cluster"
@@ -129,7 +129,7 @@ def test_failed_item_stops_pipeline(tmp_path):
                             cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode != 0
     assert "unplaceable failed: RuntimeError: Failed to place" in result.stderr
-    assert "cluster: 1 of 2 items failed" in result.stderr
+    assert "cluster: 1 of 2 work units failed" in result.stderr
     assert not (cluster / "outputs.json").exists()
     assert (cluster / "pt36c1" / "outputs.json").exists()
     mtime = os.path.getmtime(cluster / "pt36c1" / "pt36c1.traj")
@@ -232,10 +232,10 @@ def test_plumed_input(tmp_path):
     template.write_text("c: COORDINATION GROUPA=@Ga@ GROUPB=@C@ R_0=2.7\n")
     with pytest.raises(ValueError, match="placeholder @Ga@"):
         ase_simulation.plumed_input_lines(template, atoms)
-    from pipeline.stage_specs import ITEMS
-    stage_items = ITEMS["md"]({"name": "opes", "plumed": {
+    from pipeline.stage_specs import WORK_UNITS
+    work_units = WORK_UNITS["md"]({"name": "opes", "plumed": {
                                "pt36c1": "ptc.dat", "pt18ga18c5": "ptgac.dat"}}, ["a/pt36c1.traj", "b/pt18ga18c5.traj"])
-    assert [(label, item["plumed"]) for label, item, _ in stage_items] == [
+    assert [(label, unit["plumed"]) for label, unit, _ in work_units] == [
         ("pt36c1", "ptc.dat"), ("pt18ga18c5", "ptgac.dat")]
 
 
@@ -244,6 +244,6 @@ def test_opes_minimum(tmp_path):
         shutil.copy(path, tmp_path)
     shutil.copy(HERE / "single" / "opes_minimum.toml", tmp_path)
     run_python(["-m", "pipeline.orchestrator", "opes_minimum.toml"], tmp_path)
-    item_dir = tmp_path / "run" / "00_opes_minimum" / "opes"
+    unit_dir = tmp_path / "run" / "00_opes_minimum" / "opes"
     for name in ("opes.traj", "opes_fes.dat", "outputs.json"):
-        assert (item_dir / name).exists(), name
+        assert (unit_dir / name).exists(), name

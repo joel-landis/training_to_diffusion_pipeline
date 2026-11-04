@@ -9,22 +9,22 @@ from pipeline import slurm_jobs, stages
 from pipeline.checks import check_stage
 from pipeline.config import merge_stage_settings
 from pipeline.io_utils import write_json, write_text
-from pipeline.stage_specs import ITEMS
+from pipeline.stage_specs import WORK_UNITS
 
 
-def run_stage_item(task, settings, item_dir, inputs):
-    """Run one stage item in this process; writes its settings record and, when it succeeded, outputs.json."""
+def run_work_unit(task, settings, unit_dir, inputs):
+    """Run one work unit of a stage in this process; writes its settings record and, when it succeeded, outputs.json."""
     stage_function = getattr(stages, task)
     stage_arguments = {key: value for key,
                        value in settings.items() if key != "slurm"}
     # the record holds every setting the stage runs with, defaults included
     bound_arguments = inspect.signature(stage_function).bind(
-        item_dir, inputs, **stage_arguments)
+        unit_dir, inputs, **stage_arguments)
     bound_arguments.apply_defaults()
-    write_json(os.path.join(item_dir, f"{settings['name']}_settings.json"),
+    write_json(os.path.join(unit_dir, f"{settings['name']}_settings.json"),
                {key: value for key, value in bound_arguments.arguments.items() if key != "output_dir"})
-    outputs = stage_function(item_dir, inputs, **stage_arguments)
-    write_json(os.path.join(item_dir, "outputs.json"), outputs)
+    outputs = stage_function(unit_dir, inputs, **stage_arguments)
+    write_json(os.path.join(unit_dir, "outputs.json"), outputs)
     return outputs
 
 
@@ -65,54 +65,54 @@ def move_aside(stage_dir):
 
 
 def run_stage(task, settings, stage_dir, inputs):
-    """Run all items of one stage, as SLURM jobs if settings has "slurm", otherwise in this process.
+    """Run all work units of one stage, as SLURM jobs if settings has "slurm", otherwise in this process.
 
-    Fan-out items run in <stage_dir>/<label>; items with an outputs.json are skipped. Raises if any item failed, otherwise writes
-    <stage_dir>/outputs.json with the outputs of all items and returns them.
+    Work units run in <stage_dir>/<label>; work units with an outputs.json are skipped. Raises if any work unit failed, otherwise writes
+    <stage_dir>/outputs.json with the outputs of all work units and returns them.
     """
-    if task in ITEMS:
-        stage_items = []
-        for item_label, item_settings, item_inputs in ITEMS[task](settings, inputs):
-            item_dir = os.path.join(stage_dir, item_label)
-            if not os.path.exists(item_dir):
-                os.makedirs(item_dir)
-                write_json(os.path.join(item_dir, "stage_input.json"), {
-                           "task": task, "settings": item_settings, "inputs": item_inputs})
-            stage_items.append(
-                (item_label, item_settings, item_inputs, item_dir))
+    if task in WORK_UNITS:
+        work_units = []
+        for unit_label, unit_settings, unit_inputs in WORK_UNITS[task](settings, inputs):
+            unit_dir = os.path.join(stage_dir, unit_label)
+            if not os.path.exists(unit_dir):
+                os.makedirs(unit_dir)
+                write_json(os.path.join(unit_dir, "stage_input.json"), {
+                           "task": task, "settings": unit_settings, "inputs": unit_inputs})
+            work_units.append(
+                (unit_label, unit_settings, unit_inputs, unit_dir))
     else:
-        stage_items = [(None, settings, inputs, stage_dir)]
+        work_units = [(None, settings, inputs, stage_dir)]
 
-    failure_reason_by_item_dir = {}
+    failure_reason_by_unit_dir = {}
     if "slurm" in settings:
-        for item_label, item_settings, _, item_dir in stage_items:
-            if not os.path.exists(os.path.join(item_dir, "job.sh")):
-                job_name = settings["name"] if item_label is None else f"{settings['name']}_{item_label}"
-                write_text(os.path.join(item_dir, "job.sh"),
-                           slurm_jobs.slurm_job_script(item_settings, item_dir, job_name))
-        item_dirs = [item_dir for *_, item_dir in stage_items]
+        for unit_label, unit_settings, _, unit_dir in work_units:
+            if not os.path.exists(os.path.join(unit_dir, "job.sh")):
+                job_name = settings["name"] if unit_label is None else f"{settings['name']}_{unit_label}"
+                write_text(os.path.join(unit_dir, "job.sh"),
+                           slurm_jobs.slurm_job_script(unit_settings, unit_dir, job_name))
+        unit_dirs = [unit_dir for *_, unit_dir in work_units]
         poll_interval_s = settings["slurm"].get("poll_interval_s", 60)
         _, failed_job_state_by_dir = slurm_jobs.submit_and_wait_for_jobs(
-            settings["name"], item_dirs, poll_interval_s)
-        failure_reason_by_item_dir = {item_dir: f"SLURM job {job_state}, see {item_dir}/slurm_*.err"
-                                      for item_dir, job_state in failed_job_state_by_dir.items()}
+            settings["name"], unit_dirs, poll_interval_s)
+        failure_reason_by_unit_dir = {unit_dir: f"SLURM job {job_state}, see {unit_dir}/slurm_*.err"
+                                      for unit_dir, job_state in failed_job_state_by_dir.items()}
     else:
-        for _, item_settings, item_inputs, item_dir in stage_items:
-            if os.path.exists(os.path.join(item_dir, "outputs.json")):
+        for _, unit_settings, unit_inputs, unit_dir in work_units:
+            if os.path.exists(os.path.join(unit_dir, "outputs.json")):
                 continue
             try:
-                run_stage_item(task, item_settings, item_dir, item_inputs)
+                run_work_unit(task, unit_settings, unit_dir, unit_inputs)
             except Exception as error:
-                failure_reason_by_item_dir[item_dir] = f"{type(error).__name__}: {error}"
+                failure_reason_by_unit_dir[unit_dir] = f"{type(error).__name__}: {error}"
 
-    for item_dir, failure_reason in failure_reason_by_item_dir.items():
-        print(f"WARNING: {item_dir} failed: {failure_reason}",
+    for unit_dir, failure_reason in failure_reason_by_unit_dir.items():
+        print(f"WARNING: {unit_dir} failed: {failure_reason}",
               file=sys.stderr, flush=True)
-    if failure_reason_by_item_dir:
+    if failure_reason_by_unit_dir:
         raise RuntimeError(
-            f"{settings['name']}: {len(failure_reason_by_item_dir)} of {len(stage_items)} items failed")
-    stage_outputs = [output_path for *_, item_dir in stage_items
-                     for output_path in json.loads(Path(item_dir, "outputs.json").read_text())]
+            f"{settings['name']}: {len(failure_reason_by_unit_dir)} of {len(work_units)} work units failed")
+    stage_outputs = [output_path for *_, unit_dir in work_units
+                     for output_path in json.loads(Path(unit_dir, "outputs.json").read_text())]
     write_json(os.path.join(stage_dir, "outputs.json"), stage_outputs)
     return stage_outputs
 
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     if sys.argv[1] == "--run-stage":
         stage_input = json.loads(
             Path(sys.argv[2], "stage_input.json").read_text())
-        run_stage_item(stage_input["task"], stage_input["settings"], sys.argv[2], stage_input["inputs"])
+        run_work_unit(stage_input["task"], stage_input["settings"], sys.argv[2], stage_input["inputs"])
         sys.exit(0)
     print(
         f"finished: {run_pipeline(tomllib.loads(Path(sys.argv[1]).read_text()))}", flush=True)

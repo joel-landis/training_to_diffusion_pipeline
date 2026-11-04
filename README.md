@@ -97,8 +97,8 @@ nsteps = 2000
 ## Restarting
 
 Rerunning the same config skips finished stages and resumes unfinished ones. If the settings or inputs of a stage
-changed, its old directory is renamed `<dir>_old_<n>` and the stage and all later stages run again. If an item of a
-stage fails, the pipeline stops after that stage; rerunning retries the failed items.
+changed, its old directory is renamed `<dir>_old_<n>` and the stage and all later stages run again. If a work unit of
+a stage fails, the pipeline stops after that stage; rerunning retries the failed work units.
 
 ## Stages
 
@@ -121,7 +121,7 @@ The thermostat targets the internal temperature of the cluster, so the temperatu
 
 ### `generate_clusters`
 
-Builds clusters by random placement in a sphere, BFGS relaxation and MD equilibration. One item per entry of
+Builds clusters by random placement in a sphere, BFGS relaxation and MD equilibration. One work unit per entry of
 `clusters`. Output: `<label>.traj`.
 
 | Setting                | Default  | Meaning                                                                   |
@@ -138,7 +138,7 @@ Builds clusters by random placement in a sphere, BFGS relaxation and MD equilibr
 
 ### `md`
 
-Bussi MD, optionally biased with PLUMED. One item per input structure. Output: `<label>.traj`.
+Bussi MD, optionally biased with PLUMED. One work unit per input structure. Output: `<label>.traj`.
 
 | Setting                  | Default  | Meaning                                                    |
 | ------------------------ | -------- | ---------------------------------------------------------- |
@@ -210,7 +210,7 @@ Runs `mace.cli.run_train` on one `_train` and one `_val` input file. Output: `<m
 ### `opes_minimum`
 
 Picks the frame of an OPES trajectory closest to the free-energy minimum, computed from the `STATE` file next to the
-trajectory. One item per input trajectory. Output: `<label>.traj`.
+trajectory. One work unit per input trajectory. Output: `<label>.traj`.
 
 | Setting         | Default  | Meaning                          |
 | --------------- | -------- | -------------------------------- |
@@ -223,7 +223,7 @@ trajectory. One item per input trajectory. Output: `<label>.traj`.
 ### `analyze`
 
 Diffusion coefficient per species from blocked MSD fits, and coordination numbers of every element pair, metal-metal pair
-distances and distances to the centre of mass. One item per input trajectory. Give the stage a `slurm` key, e.g.
+distances and distances to the centre of mass. One work unit per input trajectory. Give the stage a `slurm` key, e.g.
 `slurm = { mem_per_cpu = "2G" }`; each trajectory then runs as its own job. Output: `<label>_diffusion.csv`, the VACF and
 MSD plots, and the coordination result `coordination_<key>.npz` in `cache_dir`, which later runs on the same trajectory
 with the same settings reuse.

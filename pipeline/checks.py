@@ -10,7 +10,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from pipeline.config import load_site_config
-from pipeline.stage_specs import ITEMS
+from pipeline.stage_specs import WORK_UNITS
 from pipeline.vasp_jobs import VASP_DEFAULTS, VASP_REQUIRED
 
 LOOKUPS_PATH = Path(__file__).resolve().parent / "lookups.json"
@@ -165,7 +165,7 @@ STAGE_RULES = {
 
 
 def check_stage(task, settings, input_files, run_dir=None):
-    """Problems with one stage: missing input files, then the keys and rules of every item; empty if the stage can run.
+    """Problems with one stage: missing input files, then the keys and rules of every work unit; empty if the stage can run.
 
     input_files are the stage's inputs that are files, not names of earlier stages. Files inside run_dir are not
     required to exist yet.
@@ -174,21 +174,21 @@ def check_stage(task, settings, input_files, run_dir=None):
         return [f"unknown task {task!r}; it is not a function of {STAGES_PATH}"]
     problems = [
         f"file not found: {path}" for path in missing_files(input_files, run_dir)]
-    item_settings_list = [settings]
-    if task in ITEMS:
+    unit_settings_list = [settings]
+    if task in WORK_UNITS:
         try:
-            item_settings_list = [item_settings for _, item_settings, _ in ITEMS[task](
+            unit_settings_list = [unit_settings for _, unit_settings, _ in WORK_UNITS[task](
                 settings, input_files)] or [settings]
         except (KeyError, ValueError) as error:
-            return problems + [f"cannot split into items: {type(error).__name__}: {error}"]
-    for item_settings in item_settings_list:
-        problems += check_item(task, item_settings, run_dir)
+            return problems + [f"cannot split into work units: {type(error).__name__}: {error}"]
+    for unit_settings in unit_settings_list:
+        problems += check_work_unit(task, unit_settings, run_dir)
     return problems
 
 
-def check_item(task, item_settings, run_dir):
-    """Problems with the settings of one item: its keys and the stage's rules."""
-    problems = key_problems(task, item_settings)
+def check_work_unit(task, unit_settings, run_dir):
+    """Problems with the settings of one work unit: its keys and the stage's rules."""
+    problems = key_problems(task, unit_settings)
     if task in STAGE_RULES:
-        problems += STAGE_RULES[task](item_settings, run_dir)
+        problems += STAGE_RULES[task](unit_settings, run_dir)
     return problems
