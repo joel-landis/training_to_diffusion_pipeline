@@ -3,6 +3,20 @@ import json
 import os
 
 
+def split_name(path):
+    """Split name of a file: the text after the last "_" of the file name without extension (selection_train.traj -> train)."""
+    return os.path.splitext(os.path.basename(path))[0].rsplit("_", 1)[-1]
+
+
+def unique_split_names(split_files):
+    """Split name of each file, in input order; raises if two files give the same split name."""
+    split_names = [split_name(split_file) for split_file in split_files]
+    if len(set(split_names)) != len(split_names):
+        raise ValueError(
+            f"frame files {split_files} give non-unique split names {split_names}")
+    return split_names
+
+
 def write_text(path, text):
     """Write text to path and fsync it."""
     with open(path, "w") as output_file:

@@ -6,8 +6,8 @@ from ase.io import read, write
 from pipeline import vasp_jobs
 from pipeline.checks import raise_on_problems
 from pipeline.config import standalone_settings, write_merged_settings
-from pipeline.io_utils import write_json
-from pipeline.stage_specs import STAGES, unique_split_names
+from pipeline.io_utils import unique_split_names, write_json
+from pipeline.stage_specs import STAGES
 
 
 def run(settings, output_dir, inputs):

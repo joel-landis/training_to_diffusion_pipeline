@@ -8,8 +8,8 @@ from mace.calculators import mace_mp
 from pipeline.mlip_dynamics import relax_with_bfgs
 from pipeline.checks import raise_on_problems
 from pipeline.config import standalone_settings, write_merged_settings
-from pipeline.io_utils import write_csv, write_json
-from pipeline.stage_specs import STAGES, mace_calculator_kwargs, unique_split_names
+from pipeline.io_utils import unique_split_names, write_csv, write_json
+from pipeline.stage_specs import STAGES, mace_calculator_kwargs
 
 
 def run(settings, output_dir, inputs):

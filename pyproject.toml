@@ -32,5 +32,5 @@ max_line_length = 79
 in-place = true
 recursive = true
 exclude = "third_party"
-# autopep8's default ignore list plus E402: stage_utils imports pyplot only after matplotlib.use("Agg")
+# autopep8's default ignore list plus E402: plot_utils imports pyplot only after matplotlib.use("Agg")
 ignore = ["E226", "E24", "W50", "W690", "E402"]
