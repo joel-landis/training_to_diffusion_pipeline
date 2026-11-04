@@ -131,6 +131,7 @@ def plot_grouped_bars(
             alphas = [0.2 if alpha == 1.0 else alpha for alpha in base_alphas]
 
         first_label = True
+        # bars of equal alpha are drawn in one call, so the legend gets one entry per element
         for alpha_value in sorted(set(alphas), reverse=True):
             bar_indices = [bar_index for bar_index,
                            alpha in enumerate(alphas) if alpha == alpha_value]

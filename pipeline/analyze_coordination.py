@@ -62,6 +62,7 @@ def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_fact
                 block.reshape(-1).astype(np.float32))
     trajectory.close()
 
+    # plot_structure.py and plot_diffusion.py read these keys back by name
     result = {
         "traj_file": np.array(trajectory_path),
         "system_name": np.array(os.path.splitext(os.path.basename(trajectory_path))[0]),

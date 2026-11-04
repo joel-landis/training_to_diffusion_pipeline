@@ -32,6 +32,8 @@ def pair_distance_peaks(npz_path, first_element, second_element):
             else:
                 c_bonded[element] = np.zeros(
                     (len(pair_distances), int(coordination[f"n_{element}"])), dtype=bool)
+    # same pair order as distances_<a>_<b> in compute_coordination: i < j of np.triu_indices for equal elements,
+    # all a x b pairs row-major otherwise
     if first_element == second_element:
         first_atoms, second_atoms = np.triu_indices(
             c_bonded[first_element].shape[1], 1)

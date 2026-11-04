@@ -308,6 +308,7 @@ def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equ
         analysis_stride
     equilibration_cut_frames = frames_from_ps(
         equilibration_ps, write_interval_fs)
+    # positions and velocities without rigid-body motion from the equilibration cut on, cached per trajectory and settings
     preprocessing_cache_fields = dict(**trajectory_cache_fields(trajectory_path), start_idx=equilibration_cut_frames, stride=analysis_stride,
                                       write_interval_fs=write_interval_fs, rigid_body_check=rigid_body_check)
     preprocessing_cache_key = cache_key(**preprocessing_cache_fields)
@@ -323,6 +324,7 @@ def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equ
     print(f"{label}: {n_analysed_frames} frames from {frame_times_ps[0]:g} to {frame_times_ps[-1]:g} ps, "
           f"analysis dt {analysis_timestep_fs:g} fs", flush=True)
 
+    # analysis windows: the whole trajectory ("all") and, with breakpoints, every piece between them
     breakpoint_frames = [int(np.searchsorted(frame_times_ps, breakpoint_ps))
                          for breakpoint_ps in breakpoints_ps]
     if any(not 0 < breakpoint_frame < n_analysed_frames for breakpoint_frame in breakpoint_frames) or breakpoint_frames != sorted(set(breakpoint_frames)):
@@ -353,6 +355,7 @@ def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equ
         unnormalised_vacf = load_or_compute_cached(
             vacf_cache_path, lambda: {"vacf": velocity_autocorrelation(species_velocities, vacf_cutoff_frames)})["vacf"]
         normalised_vacf = unnormalised_vacf / unnormalised_vacf[0]
+        # the correlation time tau from this species' VACF sets the block length
         correlation_time_frames = correlation_time(
             normalised_vacf, species_settings["vacf_epsilon"], species)
         plot_vacf(normalised_vacf, correlation_time_frames,
@@ -378,6 +381,7 @@ def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equ
                 cache_dir, f"blocks_{block_msd_cache_key}.npz")
             block_msds = load_or_compute_cached(block_msd_cache_path, lambda: blocked_mean_squared_displacement(
                 species_positions, block_length_frames))
+            # D of every block from the fit window of its MSD; the spread over the blocks gives the SEM
             block_lag_frames = np.arange(1, block_length_frames)
             block_fits = [fit_diffusion_coefficient(block_lag_frames, block_msd_curve, fit_start_frame, fit_end_frame, analysis_timestep_fs)
                           for block_msd_curve in block_msds["msd_blocks"]]
@@ -399,6 +403,7 @@ def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equ
                                                        analysis_timestep_fs)
             plot_blocks(block_msds["msd_blocks"], (block_fits[0][2], [block_fit[3] for block_fit in block_fits]), block_diffusion_coefficients,
                         global_msd, global_fit, analysis_timestep_fs, f"{output_prefix}_{species}_{window_name}")
+            # one row per window and species, in the column order of the header written below
             diffusion_rows.append([window_name, species, frame_times_ps[window_start], frame_times_ps[window_end - 1],
                                    block_diffusion_coefficients.mean(), diffusion_coefficient_sem, len(
                                        block_diffusion_coefficients),

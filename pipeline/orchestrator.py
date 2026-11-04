@@ -78,6 +78,7 @@ def run_stage(task, settings, stage_dir, inputs):
     Work units run in <stage_dir>/<label>; work units with an outputs.json are skipped. Raises if any work unit failed, otherwise writes
     <stage_dir>/outputs.json with the outputs of all work units and returns them.
     """
+    # one (label, settings, inputs, directory) per work unit; a stage without fan-out is one unit in stage_dir, label None
     if task in WORK_UNITS:
         work_units = []
         for unit_label, unit_settings, unit_inputs in WORK_UNITS[task](settings, inputs):
@@ -152,6 +153,7 @@ def run_pipeline(pipeline_config):
             Path(stage_input_file).read_text()) if os.path.exists(stage_input_file) else None
         if not earlier_stage_ran and recorded_stage_input == current_stage_input:
             if os.path.exists(stage_outputs_file):
+                # already done: same settings and inputs as the recorded run, and that run finished
                 stage_outputs = json.loads(
                     Path(stage_outputs_file).read_text())
                 outputs_by_stage_name[stage_settings["name"]] = stage_outputs
@@ -159,8 +161,10 @@ def run_pipeline(pipeline_config):
                 print(
                     f"{stage_label} {task} already done: {stage_outputs}", flush=True)
                 continue
+            # resuming: same settings and inputs, but the recorded run did not finish
             print(f"{stage_label} {task} resuming in {stage_dir}", flush=True)
         else:
+            # new or changed: no record yet, different settings or inputs, or an earlier stage ran in this call
             if os.path.exists(stage_dir):
                 print(
                     f"{stage_label} {task} settings or inputs changed, moved old run to {move_aside(stage_dir)}", flush=True)

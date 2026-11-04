@@ -70,6 +70,7 @@ def generate_clusters(output_dir, inputs, *, name, composition, radius, temperat
                  remove_rigid_body_interval_fs=remove_rigid_body_interval_fs,
                  random_number_generator=random_number_generator, output_prefix=f"{output_prefix}_equilibration",
                  progress_label=f"{name} equilibration")
+    # back to the box centre after the MD
     sorted_cluster.center(vacuum=vacuum)
     write(f"{output_prefix}.traj", sorted_cluster)
     return [f"{output_prefix}.traj"]
@@ -143,6 +144,7 @@ def pick_frames_by_fps(atom_descriptors_per_frame, n_frames, atoms_per_frame_fac
     FPS samples atoms_per_frame_factor * n_frames atoms, since several can fall in one frame; excluded_frame_indices are never picked.
     Returns {frame index: index of the atom whose pick selected the frame}, in FPS order.
     """
+    # FPS runs over atoms; row r of the stacked descriptors is atom atom_index_of_row[r] of frame frame_index_of_row[r]
     stacked_atom_descriptors = np.vstack(atom_descriptors_per_frame)
     frame_index_of_row = np.repeat(np.arange(len(atom_descriptors_per_frame)), [
                                    len(descriptors) for descriptors in atom_descriptors_per_frame])
@@ -155,6 +157,7 @@ def pick_frames_by_fps(atom_descriptors_per_frame, n_frames, atoms_per_frame_fac
     # fixed start, so the same descriptors always give the same selection
     for fps_row in fps(descriptor_tensor, ratio=n_atoms_to_sample / len(stacked_atom_descriptors), random_start=False).cpu().numpy():
         frame_index = int(frame_index_of_row[fps_row])
+        # a frame counts once, at the first of its atoms that FPS picks
         if frame_index in excluded_frame_indices or frame_index in picked_atom_by_frame:
             continue
         picked_atom_by_frame[frame_index] = int(atom_index_of_row[fps_row])
@@ -203,6 +206,7 @@ def select_frames(output_dir, inputs, *, name, frames_per_traj, device, thin_to=
 
         excluded_frame_indices = {frame_index for frame_index, original_index in enumerate(thinned_indices)
                                   if (trajectory_path, original_index) in excluded_trajectory_frames}
+        # FPS on the model's own atom descriptors spreads the selection over the environments this model distinguishes
         picked_atom_by_frame = pick_frames_by_fps(atom_descriptors_per_frame, frames_per_traj, atoms_per_frame_factor,
                                                   device, excluded_frame_indices)
         if len(picked_atom_by_frame) < frames_per_traj:
