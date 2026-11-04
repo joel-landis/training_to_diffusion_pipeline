@@ -35,7 +35,7 @@ def check_pipeline(pipeline_config):
     earlier_stage_names = []
     for stage_index, stage_config in enumerate(pipeline_config["stage"]):
         stage_settings = merge_stage_settings(pipeline_config, stage_config)
-        log_tag = f"[{stage_index:02d}_{stage_settings.get('name')}]"
+        stage_label = f"[{stage_index:02d}_{stage_settings.get('name')}]"
         task = stage_settings.pop("task")
         explicit_inputs = stage_settings.pop("inputs", [])
         referenced_stage_names = [
@@ -46,9 +46,9 @@ def check_pipeline(pipeline_config):
             entry for entry in referenced_stage_names if os.path.exists(entry)]
         if ambiguous_inputs:
             problems.append(
-                f"{log_tag} inputs {ambiguous_inputs} are both earlier stage names and existing files")
+                f"{stage_label} inputs {ambiguous_inputs} are both earlier stage names and existing files")
         earlier_stage_names.append(stage_settings.get("name"))
-        problems += [f"{log_tag} {problem}" for problem in check_stage(
+        problems += [f"{stage_label} {problem}" for problem in check_stage(
             task, stage_settings, input_files, run_dir)]
     if problems:
         raise RuntimeError(
@@ -123,7 +123,7 @@ def run_pipeline(pipeline_config):
     A stage gets its "inputs", with names of earlier stages replaced by their outputs, else the previous stage's outputs.
     """
     check_pipeline(pipeline_config)
-    upstream_outputs = []
+    previous_stage_outputs = []
     outputs_by_stage_name = {}
     # inputs are compared by path, not content: once a stage has run, every later stage must rerun
     earlier_stage_ran = False
@@ -131,42 +131,44 @@ def run_pipeline(pipeline_config):
         stage_settings = merge_stage_settings(pipeline_config, stage_config)
         task = stage_settings.pop("task")
         explicit_inputs = stage_settings.pop("inputs", None)
-        if explicit_inputs is not None:
-            upstream_outputs = [input_path for entry in explicit_inputs
-                                for input_path in outputs_by_stage_name.get(entry, [entry])]
+        # without "inputs" the stage takes the previous stage's outputs; in "inputs", the name of an earlier stage
+        # stands for that stage's outputs and any other entry is a file path
+        stage_inputs = previous_stage_outputs if explicit_inputs is None else [
+            input_path for entry in explicit_inputs for input_path in outputs_by_stage_name.get(entry, [entry])]
         stage_dir = os.path.join(
             pipeline_config["run_dir"], f"{stage_index:02d}_{stage_settings['name']}")
-        log_tag = f"[{stage_index:02d}_{stage_settings['name']}]"
+        stage_label = f"[{stage_index:02d}_{stage_settings['name']}]"
         stage_outputs_file = os.path.join(stage_dir, "outputs.json")
         stage_input_file = os.path.join(stage_dir, "stage_input.json")
         # JSON round trip, so it compares equal to the stage_input.json read from disk
         current_stage_input = json.loads(json.dumps(
-            {"task": task, "settings": stage_settings, "inputs": upstream_outputs}))
+            {"task": task, "settings": stage_settings, "inputs": stage_inputs}))
         recorded_stage_input = json.loads(
             Path(stage_input_file).read_text()) if os.path.exists(stage_input_file) else None
         if not earlier_stage_ran and recorded_stage_input == current_stage_input:
             if os.path.exists(stage_outputs_file):
-                upstream_outputs = json.loads(
+                stage_outputs = json.loads(
                     Path(stage_outputs_file).read_text())
-                outputs_by_stage_name[stage_settings["name"]
-                                      ] = upstream_outputs
+                outputs_by_stage_name[stage_settings["name"]] = stage_outputs
+                previous_stage_outputs = stage_outputs
                 print(
-                    f"{log_tag} {task} already done: {upstream_outputs}", flush=True)
+                    f"{stage_label} {task} already done: {stage_outputs}", flush=True)
                 continue
-            print(f"{log_tag} {task} resuming in {stage_dir}", flush=True)
+            print(f"{stage_label} {task} resuming in {stage_dir}", flush=True)
         else:
             if os.path.exists(stage_dir):
                 print(
-                    f"{log_tag} {task} settings or inputs changed, moved old run to {move_aside(stage_dir)}", flush=True)
+                    f"{stage_label} {task} settings or inputs changed, moved old run to {move_aside(stage_dir)}", flush=True)
             os.makedirs(stage_dir)
             write_json(stage_input_file, current_stage_input)
-            print(f"{log_tag} {task} -> {stage_dir}", flush=True)
+            print(f"{stage_label} {task} -> {stage_dir}", flush=True)
         earlier_stage_ran = True
-        upstream_outputs = run_stage(
-            task, stage_settings, stage_dir, upstream_outputs)
-        outputs_by_stage_name[stage_settings["name"]] = upstream_outputs
-        print(f"{log_tag} done: {upstream_outputs}", flush=True)
-    return upstream_outputs
+        stage_outputs = run_stage(
+            task, stage_settings, stage_dir, stage_inputs)
+        outputs_by_stage_name[stage_settings["name"]] = stage_outputs
+        previous_stage_outputs = stage_outputs
+        print(f"{stage_label} done: {stage_outputs}", flush=True)
+    return stage_outputs
 
 
 if __name__ == "__main__":
