@@ -102,10 +102,7 @@ def plot_grouped_bars(
     width = 0.8 / max(len(hue_order), 1)
     offsets = (np.arange(len(hue_order), dtype=float) -
                (len(hue_order) - 1) / 2.0) * width
-    colors = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
-
-    if len(colors) < len(hue_order):
-        colors = [f"C{color_index}" for color_index in range(len(hue_order))]
+    colors = [f"C{color_index}" for color_index in range(len(hue_order))]
 
     print(console_prefix)
     for offset, color, element in zip(offsets, colors, hue_order):

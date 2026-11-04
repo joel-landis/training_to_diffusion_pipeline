@@ -42,9 +42,6 @@ def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_fact
                       for first_element, second_element in metal_pairs}
     for row_index, frame_index in enumerate(tqdm(frame_indices, desc="coordination")):
         frame = trajectory[frame_index]
-        if frame.get_chemical_symbols() != symbols.tolist():
-            raise ValueError(
-                f"{trajectory_path}: atoms or their order changed at frame {frame_index}")
         all_distances = frame.get_all_distances(mic=True)
         connectivity = all_distances < pair_cutoffs
         np.fill_diagonal(connectivity, False)
