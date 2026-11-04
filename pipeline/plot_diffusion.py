@@ -6,11 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from pipeline.plot_utils import (PLOT_STYLE, c_pt_ratio, carbon_systems, coordination_files_by_system, display_label, family_key,
+from pipeline.plot_utils import (PLOT_STYLE, c_pt_ratio, carbon_systems, display_label, family_key,
                                  ordered_elements, parse_composition, save_plot, system_sort_key, systems_by_family)
-from pipeline.config import write_merged_settings
-from pipeline.io_utils import write_csv, write_json
-from pipeline.stage_specs import STAGES
+from pipeline.io_utils import write_csv
 
 Y_LABEL = r"D [m$^{2}$/s]"
 RESULTS_COLUMNS = ["system", "regime", "d", "sem", "element"]
@@ -494,41 +492,6 @@ def write_coordination_correlations(coordination_means, output_dir):
     write_csv(correlations_path, [
               "family", "cn_a", "cn_b", "n_systems", "pearson_r"], correlation_rows)
     return correlations_path
-
-
-def run(settings, output_dir, inputs):
-    """Diffusion summary plots from analyze_diffusion CSVs and analyze_coordination npz files in inputs.
-
-    The system of an npz input is its stored system_name; coordination_files ({system: npz path}) adds or replaces entries.
-    Returns the paths of all plots and of cn_correlations.csv.
-    """
-    merged_settings, _ = write_merged_settings(
-        STAGES["plot_diffusion"], settings, output_dir, inputs)
-    unknown_inputs = [
-        input_path for input_path in inputs if not input_path.endswith((".csv", ".npz"))]
-    if unknown_inputs:
-        raise ValueError(
-            f"inputs must be .csv or .npz files, got {unknown_inputs}")
-    npz_path_by_system = coordination_files_by_system([input_path for input_path in inputs if input_path.endswith(".npz")],
-                                                      merged_settings["coordination_files"])
-
-    diffusion_results = load_diffusion_results(
-        [input_path for input_path in inputs if input_path.endswith(".csv")])
-    with plt.rc_context(PLOT_STYLE):
-        outputs = plot_overviews(
-            diffusion_results, merged_settings["regimes"], merged_settings["trend_regimes"], output_dir)
-        outputs += plot_highlights(diffusion_results,
-                                   merged_settings["regimes"], merged_settings["highlights"], output_dir)
-        outputs += plot_diffusion_ratios(
-            diffusion_results, merged_settings["regimes"], merged_settings["trend_regimes"], output_dir)
-        if npz_path_by_system:
-            coordination_means = load_coordination_means(npz_path_by_system)
-            outputs += plot_coordination_trends(diffusion_results, coordination_means, merged_settings["regimes"],
-                                                merged_settings["trend_regimes"], output_dir)
-            outputs.append(write_coordination_correlations(
-                coordination_means, output_dir))
-    write_json(os.path.join(output_dir, "outputs.json"), outputs)
-    return outputs
 
 
 if __name__ == "__main__":

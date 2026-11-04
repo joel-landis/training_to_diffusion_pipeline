@@ -39,28 +39,17 @@ write_interval_fs = 10.0
 seed = 6
 
 [[stage]]
-module = "analyze_diffusion"
+module = "analyze"
 name = "analysis"
 write_interval_fs = 10.0
-equilibration_ps = 5.0
+equilibration_ps = 20.0
 cache_dir = "<path/to/analysis_cache>"
-species.C = { vacf_cutoff_ps = 2.0, vacf_epsilon = 0.05, n_samples_per_block = 25, fit_start_ps = 4.0, fit_width_ps = 3.0 }
-species.Pt = { vacf_cutoff_ps = 2.0, vacf_epsilon = 0.05, n_samples_per_block = 25, fit_start_ps = 5.0, fit_width_ps = 4.0 }
+slurm = { mem_per_cpu = "2G", time = "24:00:00" }
+# values of the Pt18Ga18C5 production analysis; the fit windows are set by inspecting the MSD plots
+species.C = { vacf_cutoff_ps = 100.0, vacf_epsilon = 0.015, n_samples_per_block = 250, fit_start_ps = 5.0, fit_width_ps = 2.0 }
+species.Pt = { vacf_cutoff_ps = 100.0, vacf_epsilon = 0.015, n_samples_per_block = 250, fit_start_ps = 50.0, fit_width_ps = 2.0 }
+species.Ga = { vacf_cutoff_ps = 100.0, vacf_epsilon = 0.015, n_samples_per_block = 250, fit_start_ps = 50.0, fit_width_ps = 2.0 }
 
 [[stage]]
-module = "analyze_coordination"
-name = "coordination"
-inputs = ["diffusion"]
-write_interval_fs = 10.0
-equilibration_ps = 5.0
-cache_dir = "<path/to/analysis_cache>"
-
-[[stage]]
-module = "plot_diffusion"
-name = "diffusion_plots"
-inputs = ["analysis", "coordination"]
-
-[[stage]]
-module = "plot_structure"
-name = "structure_plots"
-inputs = ["coordination"]
+module = "plot"
+name = "plots"

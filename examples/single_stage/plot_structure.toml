@@ -1,6 +1,0 @@
-run_dir = "run_plot_structure"
-
-[[stage]]
-module = "plot_structure"
-name = "structure_plots"
-inputs = ["<path/to/coordination_pt36.npz>", "<path/to/coordination_pt36c1.npz>"]

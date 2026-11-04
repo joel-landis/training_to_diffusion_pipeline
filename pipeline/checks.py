@@ -1,19 +1,27 @@
-"""Settings checks of every stage, run before anything executes; no stage module is imported.
+"""Settings checks of every stage, run before anything executes; stages.py is read as source, not imported.
 
 Version-dependent name lists (MACE foundation models, VASP INCAR tags) come from lookups.json, written by
 python -m pipeline.make_lookups for the installed mace-torch and ase versions.
 """
+import ast
 import json
 import os
 from importlib.metadata import version
 from pathlib import Path
 
 from pipeline.config import load_site_config
-from pipeline.stage_specs import STAGES
+from pipeline.stage_specs import ITEMS
+from pipeline.vasp_jobs import VASP_DEFAULTS, VASP_REQUIRED
 
 LOOKUPS_PATH = Path(__file__).resolve().parent / "lookups.json"
-# keys every stage accepts in addition to its own; "name" is also required
-GENERAL_SETTING_KEYS = {"name", "slurm"}
+STAGES_PATH = Path(__file__).resolve().parent / "stages.py"
+# keyword arguments of mace_mp the MACE stages pass on; mace_mp hands unknown keys silently to ASE's Calculator.set
+MACE_CALCULATOR_KEYS = ("model", "device", "default_dtype",
+                        "head", "dispersion", "damping", "dispersion_xc")
+# keys of a stage's ** parameter, by its name: (required, optional)
+BACKEND_KEYS = {"mace_settings": ((), MACE_CALCULATOR_KEYS),
+                "vasp_settings": (VASP_REQUIRED, tuple(VASP_DEFAULTS))}
+REQUIRED = object()
 SLURM_KEYS = {"cpus_per_task", "mem_per_cpu", "time",
               "gpus", "sbatch_args", "poll_interval_s"}
 DIFFUSION_SPECIES_KEYS = {"vacf_cutoff_ps", "vacf_epsilon",
@@ -43,15 +51,32 @@ def missing_files(paths, run_dir):
     return [path for path in paths if not os.path.exists(path) and not inside_run_dir(path)]
 
 
-def key_problems(stage_spec, settings):
+def stage_parameters(module_name):
+    """({setting: default or REQUIRED} of the stage's entry in stages.py, name of its ** parameter or None),
+    read from the source without importing it; None if stages.py has no such entry."""
+    stage_functions = {node.name: node for node in ast.parse(STAGES_PATH.read_text()).body
+                       if isinstance(node, ast.FunctionDef)}
+    if module_name not in stage_functions:
+        return None
+    arguments = stage_functions[module_name].args
+    parameter_defaults = {argument.arg: REQUIRED if default is None else ast.literal_eval(default)
+                          for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults)}
+    return parameter_defaults, None if arguments.kwarg is None else arguments.kwarg.arg
+
+
+def key_problems(module_name, settings):
     """Unknown keys, missing required keys and unknown slurm keys."""
-    allowed_keys = set(stage_spec["required"]) | set(
-        stage_spec["defaults"]) | set(stage_spec["optional"]) | GENERAL_SETTING_KEYS
+    parameter_defaults, backend_parameter = stage_parameters(module_name)
+    backend_required, backend_optional = BACKEND_KEYS.get(
+        backend_parameter, ((), ()))
+    allowed_keys = set(parameter_defaults) | set(
+        backend_required) | set(backend_optional) | {"slurm"}
     problems = []
     unknown_keys = set(settings) - allowed_keys
     if unknown_keys:
         problems.append(f"unknown settings {sorted(unknown_keys)}")
-    missing_keys = (set(stage_spec["required"]) | {"name"}) - set(settings)
+    missing_keys = ({key for key, default in parameter_defaults.items() if default is REQUIRED}
+                    | set(backend_required)) - set(settings)
     if missing_keys:
         problems.append(f"missing required settings {sorted(missing_keys)}")
     unknown_slurm_keys = set(settings.get("slurm", {})) - SLURM_KEYS
@@ -112,7 +137,8 @@ def analyze_diffusion_problems(settings, run_dir):
         if set(species_settings) != DIFFUSION_SPECIES_KEYS:
             problems.append(
                 f"species.{species} must have exactly the keys {sorted(DIFFUSION_SPECIES_KEYS)}, got {sorted(species_settings)}")
-    default_rigid_body_check = STAGES["analyze_diffusion"]["defaults"]["rigid_body_check"]
+    default_rigid_body_check = stage_parameters("analyze")[
+        0]["rigid_body_check"]
     rigid_body_check = settings.get(
         "rigid_body_check", default_rigid_body_check)
     if set(rigid_body_check) != set(default_rigid_body_check):
@@ -133,8 +159,8 @@ STAGE_RULES = {
     "relax_mlip": mace_model_problems,
     "relax_vasp": vasp_problems,
     "label_vasp": vasp_problems,
-    "analyze_diffusion": analyze_diffusion_problems,
-    "plot_diffusion": plot_diffusion_problems,
+    "analyze": analyze_diffusion_problems,
+    "plot": plot_diffusion_problems,
 }
 
 
@@ -144,15 +170,14 @@ def check_stage(module_name, settings, input_files, run_dir=None):
     input_files are the stage's inputs that are files, not names of earlier stages. Files inside run_dir are not
     required to exist yet.
     """
-    if module_name not in STAGES:
-        return [f"unknown module {module_name!r}; known modules {sorted(STAGES)}"]
-    stage_spec = STAGES[module_name]
+    if stage_parameters(module_name) is None:
+        return [f"unknown module {module_name!r}; it is not a function of {STAGES_PATH}"]
     problems = [
         f"file not found: {path}" for path in missing_files(input_files, run_dir)]
     item_settings_list = [settings]
-    if "items" in stage_spec:
+    if module_name in ITEMS:
         try:
-            item_settings_list = [item_settings for _, item_settings, _ in stage_spec["items"](
+            item_settings_list = [item_settings for _, item_settings, _ in ITEMS[module_name](
                 settings, input_files)] or [settings]
         except (KeyError, ValueError) as error:
             return problems + [f"cannot split into items: {type(error).__name__}: {error}"]
@@ -163,15 +188,7 @@ def check_stage(module_name, settings, input_files, run_dir=None):
 
 def check_item(module_name, item_settings, run_dir):
     """Problems with the settings of one item: its keys and the stage's rules."""
-    problems = key_problems(STAGES[module_name], item_settings)
+    problems = key_problems(module_name, item_settings)
     if module_name in STAGE_RULES:
         problems += STAGE_RULES[module_name](item_settings, run_dir)
     return problems
-
-
-def raise_on_problems(module_name, settings, input_files):
-    """Check a standalone run, which runs settings as one item without fan-out, and raise with all problems."""
-    problems = [f"file not found: {path}" for path in missing_files(
-        input_files, None)] + check_item(module_name, settings, None)
-    if problems:
-        raise ValueError(f"{module_name}: " + "; ".join(problems))

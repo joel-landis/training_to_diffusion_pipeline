@@ -1,6 +1,5 @@
 import itertools
 import os
-import sys
 
 import numpy as np
 from ase.data import covalent_radii
@@ -8,10 +7,6 @@ from ase.io.trajectory import Trajectory
 from tqdm import tqdm
 
 from pipeline.analysis_utils import cache_key, frames_from_ps, load_or_compute_cached, trajectory_cache_fields
-from pipeline.checks import raise_on_problems
-from pipeline.config import standalone_settings, write_merged_settings
-from pipeline.io_utils import write_json
-from pipeline.stage_specs import STAGES
 
 
 def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_factor, write_interval_fs):
@@ -109,36 +104,19 @@ def compute_coordination(trajectory_path, first_frame_index, stride, cutoff_fact
     return result
 
 
-def run(settings, output_dir, inputs):
+def coordination_analysis(trajectory_path, *, write_interval_fs, equilibration_ps, cache_dir, stride, cutoff_factor):
     """Coordination analysis of one trajectory, computed once per trajectory and settings and kept in cache_dir.
 
-    Returns [<cache_dir>/coordination_<key>.npz].
+    Returns <cache_dir>/coordination_<key>.npz.
     """
-    if len(inputs) != 1:
-        raise ValueError(
-            f"analyze_coordination needs exactly one trajectory, got {inputs}")
-    merged_settings, _ = write_merged_settings(
-        STAGES["analyze_coordination"], settings, output_dir, inputs)
-    trajectory_path = os.path.abspath(inputs[0])
-    os.makedirs(merged_settings["cache_dir"], exist_ok=True)
-
-    first_frame_index = frames_from_ps(
-        merged_settings["equilibration_ps"], merged_settings["write_interval_fs"])
-    coordination_cache_key = cache_key(**trajectory_cache_fields(trajectory_path), start_idx=first_frame_index, stride=merged_settings["stride"],
-                                       cutoff_factor=merged_settings["cutoff_factor"], write_interval_fs=merged_settings["write_interval_fs"])
+    trajectory_path = os.path.abspath(trajectory_path)
+    os.makedirs(cache_dir, exist_ok=True)
+    first_frame_index = frames_from_ps(equilibration_ps, write_interval_fs)
+    coordination_cache_key = cache_key(**trajectory_cache_fields(trajectory_path), start_idx=first_frame_index, stride=stride,
+                                       cutoff_factor=cutoff_factor, write_interval_fs=write_interval_fs)
     cache_path = os.path.join(
-        merged_settings["cache_dir"], f"coordination_{coordination_cache_key}.npz")
-    load_or_compute_cached(cache_path, lambda: compute_coordination(trajectory_path, first_frame_index, merged_settings["stride"],
-                                                                    merged_settings["cutoff_factor"], merged_settings["write_interval_fs"]))
-    print(
-        f"{merged_settings['name']}: coordination of {trajectory_path} -> {cache_path}", flush=True)
-    outputs = [cache_path]
-    write_json(os.path.join(output_dir, "outputs.json"), outputs)
-    return outputs
-
-
-if __name__ == "__main__":
-    settings, inputs = standalone_settings(
-        sys.argv[1], "analyze_coordination", sys.argv[2:])
-    raise_on_problems("analyze_coordination", settings, inputs)
-    run(settings, ".", inputs)
+        cache_dir, f"coordination_{coordination_cache_key}.npz")
+    load_or_compute_cached(cache_path, lambda: compute_coordination(trajectory_path, first_frame_index, stride, cutoff_factor,
+                                                                    write_interval_fs))
+    print(f"coordination of {trajectory_path} -> {cache_path}", flush=True)
+    return cache_path

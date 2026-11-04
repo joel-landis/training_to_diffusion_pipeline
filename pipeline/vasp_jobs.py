@@ -13,6 +13,14 @@ from pipeline.io_utils import write_csv, write_text
 
 SCF_CONVERGED_MARKER = "aborting loop because EDIFF is reached"
 RELAX_CONVERGED_MARKER = "reached required accuracy - stopping structural energy minimisation"
+VASP_REQUIRED = ("incar", "potcars", "ntasks", "time")
+VASP_DEFAULTS = {
+    "kpoints": None,
+    "sbatch_args": [],
+    "mem_per_cpu": "2G",
+    "sync_interval_s": 60,
+    "poll_interval_s": 60,
+}
 
 
 def format_incar_value(value):
@@ -176,13 +184,14 @@ def write_frame_inputs(vasp_settings, incar_tags, frame_dir, atoms, job_name, su
 
 
 def run_vasp_frames(vasp_settings, output_dir, frames_to_run, success_marker, continue_from_contcar):
-    """Write the inputs of every frame that has no job.sh yet, submit the jobs and wait until all finished.
+    """One VASP job per frame: write the inputs of every frame without a job.sh, submit, wait, and write
+    <output_dir>/<name>_status.csv. Raises if any frame failed.
 
-    frames_to_run: list of (split, frame_index, atoms); frame i of split s goes to <output_dir>/<s>/<i:05d>.
-    Returns (frame directories in the order of frames_to_run, {frame_dir: job ID}, {failed frame_dir: SLURM state}).
+    frames_to_run: list of (split, frame_index, atoms); frame i of split s runs in <output_dir>/<s>/<i:05d>.
+    Returns the frame directories in the order of frames_to_run.
     """
     site_config = load_site_config()
-    vasp_settings = {**vasp_settings, **
+    vasp_settings = {**VASP_DEFAULTS, **vasp_settings, **
                      site_config["vasp"], "job_setup": site_config["job_setup"]}
     incar_tags = prepare_incar(vasp_settings)
     frame_dirs = []
@@ -196,7 +205,19 @@ def run_vasp_frames(vasp_settings, output_dir, frames_to_run, success_marker, co
         f"{vasp_settings['name']}: {len(frame_dirs)} frames prepared in {output_dir}", flush=True)
     job_id_by_dir, failed_state_by_dir = slurm_jobs.submit_and_wait_for_jobs(
         vasp_settings["name"], frame_dirs, vasp_settings["poll_interval_s"])
-    return frame_dirs, job_id_by_dir, failed_state_by_dir
+
+    status_rows = [[split, frame_index, job_id_by_dir[frame_dir], failed_state_by_dir.get(frame_dir, "COMPLETED"),
+                    failure_reason(frame_dir, job_id_by_dir[frame_dir], failed_state_by_dir[frame_dir])
+                    if frame_dir in failed_state_by_dir else ""]
+                   for (split, frame_index, _), frame_dir in zip(frames_to_run, frame_dirs)]
+    status_path = os.path.join(
+        output_dir, f"{vasp_settings['name']}_status.csv")
+    write_csv(status_path, ["split", "frame_index",
+              "job_id", "state", "reason"], status_rows)
+    if failed_state_by_dir:
+        raise RuntimeError(f"{vasp_settings['name']}: {len(failed_state_by_dir)} of {len(status_rows)} frames failed, "
+                           f"see the reason column of {status_path}; rerun the same config to resubmit the failed frames")
+    return frame_dirs
 
 
 def failure_reason(frame_dir, job_id, job_state):
@@ -206,11 +227,3 @@ def failure_reason(frame_dir, job_id, job_state):
     if reason_file.exists():
         return reason_file.read_text().strip()
     return f"SLURM state {job_state}; VASP ended before the convergence check, see vasp_{job_id}.err"
-
-
-def write_status(vasp_settings, output_prefix, header, status_rows, failed_state_by_dir):
-    """Write <output_prefix>_status.csv, then raise if any frame failed."""
-    write_csv(f"{output_prefix}_status.csv", header, status_rows)
-    if failed_state_by_dir:
-        raise RuntimeError(f"{vasp_settings['name']}: {len(failed_state_by_dir)} of {len(status_rows)} frames failed, "
-                           f"see the reason column of {output_prefix}_status.csv; rerun the same config to resubmit the failed frames")

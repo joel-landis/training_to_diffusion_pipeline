@@ -36,37 +36,38 @@ def copy_structures(tmp_path):
 
 def test_generate_cluster(tmp_path):
     shutil.copy(HERE / "single" / "gen.toml", tmp_path)
-    run_python(["-m", "pipeline.generate_cluster", "gen.toml"], tmp_path)
+    run_python(["-m", "pipeline.orchestrator", "gen.toml"], tmp_path)
+    item_dir = tmp_path / "run" / "00_cluster" / "cluster"
     for name in ("cluster.traj", "cluster_relaxed.traj", "cluster_equilibration.traj", "outputs.json"):
-        assert (tmp_path / name).exists(), name
+        assert (item_dir / name).exists(), name
 
 
 def test_run_md(tmp_path):
     shutil.copy(HERE / "single" / "md.toml", tmp_path)
     copy_structures(tmp_path)
-    run_python(["-m", "pipeline.run_md", "md.toml",
-               "pt36c1_start.traj"], tmp_path)
-    for name in ("md.traj", "md.log", "outputs.json"):
-        assert (tmp_path / name).exists(), name
+    run_python(["-m", "pipeline.orchestrator", "md.toml"], tmp_path)
+    item_dir = tmp_path / "run" / "00_md" / "pt36c1_start"
+    for name in ("pt36c1_start.traj", "pt36c1_start.log", "outputs.json"):
+        assert (item_dir / name).exists(), name
 
 
 def test_select_frames(tmp_path):
     shutil.copy(HERE / "single" / "select.toml", tmp_path)
     copy_structures(tmp_path)
-    run_python(["-m", "pipeline.select_frames", "select.toml",
-               "pt36c1_diffusion_21frames.traj"], tmp_path)
+    run_python(["-m", "pipeline.orchestrator", "select.toml"], tmp_path)
+    stage_dir = tmp_path / "run" / "00_selection"
     for name in ("selection_train.traj", "selection_val.traj", "selection_provenance.csv", "outputs.json"):
-        assert (tmp_path / name).exists(), name
+        assert (stage_dir / name).exists(), name
 
 
 def test_relax_mlip(tmp_path):
     shutil.copy(HERE / "single" / "relax_mlip.toml", tmp_path)
     write(tmp_path / "frames_train.traj", read(HERE / "fixtures" /
           "structures" / "pt36c1_diffusion_21frames.traj", index=":2"))
-    run_python(["-m", "pipeline.relax_mlip", "relax_mlip.toml",
-               "frames_train.traj"], tmp_path)
+    run_python(["-m", "pipeline.orchestrator", "relax_mlip.toml"], tmp_path)
+    stage_dir = tmp_path / "run" / "00_relax"
     for name in ("relax_train.traj", "relax_relax.csv", "outputs.json"):
-        assert (tmp_path / name).exists(), name
+        assert (stage_dir / name).exists(), name
 
 
 def test_several_structures(tmp_path):
@@ -220,19 +221,19 @@ def test_finetune_mace(tmp_path):
 
 
 def test_plumed_input(tmp_path):
-    from pipeline import run_md
+    from pipeline import mlip_dynamics
     from ase import Atoms
     template = tmp_path / "plumed.dat"
     template.write_text(
         "UNITS LENGTH=A ENERGY=eV TIME=fs\n# @Ga@ in a comment\n\nc: COORDINATION GROUPA=@Pt@ GROUPB=@C@ R_0=2.7\n")
     atoms = Atoms("PtCPt", positions=np.zeros((3, 3)))
-    assert run_md.plumed_input_lines(template, atoms) == [
+    assert mlip_dynamics.plumed_input_lines(template, atoms) == [
         "UNITS LENGTH=A ENERGY=eV TIME=fs", "c: COORDINATION GROUPA=1,3 GROUPB=2 R_0=2.7"]
     template.write_text("c: COORDINATION GROUPA=@Ga@ GROUPB=@C@ R_0=2.7\n")
     with pytest.raises(ValueError, match="placeholder @Ga@"):
-        run_md.plumed_input_lines(template, atoms)
-    from pipeline.stage_specs import STAGES
-    stage_items = STAGES["run_md"]["items"]({"name": "opes", "plumed": {
+        mlip_dynamics.plumed_input_lines(template, atoms)
+    from pipeline.stage_specs import ITEMS
+    stage_items = ITEMS["run_md"]({"name": "opes", "plumed": {
                                "pt36c1": "ptc.dat", "pt18ga18c5": "ptgac.dat"}}, ["a/pt36c1.traj", "b/pt18ga18c5.traj"])
     assert [(label, item["plumed"]) for label, item, _ in stage_items] == [
         ("pt36c1", "ptc.dat"), ("pt18ga18c5", "ptgac.dat")]
@@ -242,7 +243,7 @@ def test_opes_minimum(tmp_path):
     for path in (HERE / "fixtures" / "opes").iterdir():
         shutil.copy(path, tmp_path)
     shutil.copy(HERE / "single" / "opes_minimum.toml", tmp_path)
-    run_python(["-m", "pipeline.opes_minimum",
-               "opes_minimum.toml", "opes.traj"], tmp_path)
-    for name in ("opes_minimum.traj", "opes_minimum_fes.dat", "outputs.json"):
-        assert (tmp_path / name).exists(), name
+    run_python(["-m", "pipeline.orchestrator", "opes_minimum.toml"], tmp_path)
+    item_dir = tmp_path / "run" / "00_opes_minimum" / "opes"
+    for name in ("opes.traj", "opes_fes.dat", "outputs.json"):
+        assert (item_dir / name).exists(), name

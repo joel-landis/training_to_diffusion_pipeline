@@ -1,20 +1,31 @@
-import importlib
+import inspect
 import json
 import os
 import sys
 import tomllib
 from pathlib import Path
 
-from pipeline import slurm_jobs
+from pipeline import slurm_jobs, stages
 from pipeline.checks import check_stage
 from pipeline.config import merge_stage_settings
 from pipeline.io_utils import write_json, write_text
-from pipeline.stage_specs import STAGES
+from pipeline.stage_specs import ITEMS
 
 
-def run_stage_in_process(module_name, settings, output_dir, inputs):
-    """Run one stage item in this process and return its output paths."""
-    return importlib.import_module(f"pipeline.{module_name}").run(settings, output_dir, inputs)
+def run_stage_item(module_name, settings, item_dir, inputs):
+    """Run one stage item in this process; writes its settings record and, when it succeeded, outputs.json."""
+    stage_function = getattr(stages, module_name)
+    stage_arguments = {key: value for key,
+                       value in settings.items() if key != "slurm"}
+    # the record holds every setting the stage runs with, defaults included
+    bound_arguments = inspect.signature(stage_function).bind(
+        item_dir, inputs, **stage_arguments)
+    bound_arguments.apply_defaults()
+    write_json(os.path.join(item_dir, f"{settings['name']}_settings.json"),
+               {key: value for key, value in bound_arguments.arguments.items() if key != "output_dir"})
+    outputs = stage_function(item_dir, inputs, **stage_arguments)
+    write_json(os.path.join(item_dir, "outputs.json"), outputs)
+    return outputs
 
 
 def check_pipeline(pipeline_config):
@@ -59,10 +70,9 @@ def run_stage(module_name, settings, stage_dir, inputs):
     Fan-out items run in <stage_dir>/<label>; items with an outputs.json are skipped. Raises if any item failed, otherwise writes
     <stage_dir>/outputs.json with the outputs of all items and returns them.
     """
-    stage_spec = STAGES[module_name]
-    if "items" in stage_spec:
+    if module_name in ITEMS:
         stage_items = []
-        for item_label, item_settings, item_inputs in stage_spec["items"](settings, inputs):
+        for item_label, item_settings, item_inputs in ITEMS[module_name](settings, inputs):
             item_dir = os.path.join(stage_dir, item_label)
             if not os.path.exists(item_dir):
                 os.makedirs(item_dir)
@@ -91,8 +101,7 @@ def run_stage(module_name, settings, stage_dir, inputs):
             if os.path.exists(os.path.join(item_dir, "outputs.json")):
                 continue
             try:
-                run_stage_in_process(
-                    module_name, item_settings, item_dir, item_inputs)
+                run_stage_item(module_name, item_settings, item_dir, item_inputs)
             except Exception as error:
                 failure_reason_by_item_dir[item_dir] = f"{type(error).__name__}: {error}"
 
@@ -165,8 +174,7 @@ if __name__ == "__main__":
     if sys.argv[1] == "--run-stage":
         stage_input = json.loads(
             Path(sys.argv[2], "stage_input.json").read_text())
-        run_stage_in_process(
-            stage_input["module"], stage_input["settings"], sys.argv[2], stage_input["inputs"])
+        run_stage_item(stage_input["module"], stage_input["settings"], sys.argv[2], stage_input["inputs"])
         sys.exit(0)
     print(
         f"finished: {run_pipeline(tomllib.loads(Path(sys.argv[1]).read_text()))}", flush=True)

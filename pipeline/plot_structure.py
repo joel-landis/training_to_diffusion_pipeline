@@ -6,11 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from pipeline.plot_utils import (PLOT_STYLE, c_metal_label, c_metal_ratio, carbon_systems, coordination_files_by_system, display_label,
+from pipeline.plot_utils import (PLOT_STYLE, c_metal_label, c_metal_ratio, carbon_systems, display_label,
                                  element_color, ordered_elements, parse_composition, save_plot, systems_by_family)
-from pipeline.config import write_merged_settings
-from pipeline.io_utils import write_json
-from pipeline.stage_specs import STAGES
 
 PEAK_BIN_WIDTH = 0.003
 PEAK_RANGE = (1.0, 4.0)
@@ -188,31 +185,6 @@ def plot_com_distance_densities(npz_path_by_system, output_dir):
         plot_paths.append(save_plot(figure, os.path.join(
             output_dir, "com_distance_density", f"{family}.png")))
     return plot_paths
-
-
-def run(settings, output_dir, inputs):
-    """Structure plots from analyze_coordination npz files in inputs.
-
-    The system of an npz input is its stored system_name; coordination_files ({system: npz path}) adds or replaces entries.
-    Returns the paths of all plots.
-    """
-    merged_settings, _ = write_merged_settings(
-        STAGES["plot_structure"], settings, output_dir, inputs)
-    unknown_inputs = [
-        input_path for input_path in inputs if not input_path.endswith(".npz")]
-    if unknown_inputs:
-        raise ValueError(
-            f"inputs must be .npz files of analyze_coordination, got {unknown_inputs}")
-    npz_path_by_system = coordination_files_by_system(
-        inputs, merged_settings["coordination_files"])
-
-    with plt.rc_context(PLOT_STYLE):
-        outputs = plot_pair_distance_peaks(npz_path_by_system, output_dir)
-        outputs += plot_metal_atoms_per_c(npz_path_by_system, output_dir)
-        outputs += plot_com_distance_traces(npz_path_by_system, output_dir)
-        outputs += plot_com_distance_densities(npz_path_by_system, output_dir)
-    write_json(os.path.join(output_dir, "outputs.json"), outputs)
-    return outputs
 
 
 if __name__ == "__main__":

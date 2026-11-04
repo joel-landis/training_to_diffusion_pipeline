@@ -1,5 +1,4 @@
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,11 +10,8 @@ from scipy.stats import linregress
 from tqdm import tqdm
 
 from pipeline.analysis_utils import cache_key, frames_from_ps, load_or_compute_cached, trajectory_cache_fields
-from pipeline.checks import raise_on_problems
-from pipeline.config import standalone_settings, write_merged_settings
-from pipeline.io_utils import write_csv, write_json
+from pipeline.io_utils import write_csv
 from pipeline.plot_utils import savefig_fsync
-from pipeline.stage_specs import STAGES
 
 
 def inertia_tensor(masses, positions_relative_to_center):
@@ -297,44 +293,40 @@ def plot_blocks(msd_blocks, block_fit_curves, block_diffusion_coefficients, glob
     savefig_fsync(figure, f"{output_prefix}_msd_curves_all_blocks.png")
 
 
-def run(settings, output_dir, inputs):
+def diffusion_analysis(trajectory_path, output_prefix, *, write_interval_fs, equilibration_ps, cache_dir, species,
+                       analysis_stride, breakpoints_ps, use_global_msd, rigid_body_check):
     """Diffusion coefficient of each species from blocked MSD fits, for the whole trajectory and each piece between breakpoints.
 
     Intermediate arrays are cached in cache_dir, keyed by the parameters they depend on.
-    Returns [<output_dir>/<name>_diffusion.csv]; also writes the plots.
+    Returns <output_prefix>_diffusion.csv; also writes the plots.
     """
-    if len(inputs) != 1:
-        raise ValueError(
-            f"analyze_diffusion needs exactly one trajectory, got {inputs}")
-    merged_settings, output_prefix = write_merged_settings(
-        STAGES["analyze_diffusion"], settings, output_dir, inputs)
-    trajectory_path = os.path.abspath(inputs[0])
-    os.makedirs(merged_settings["cache_dir"], exist_ok=True)
+    trajectory_path = os.path.abspath(trajectory_path)
+    label = os.path.basename(output_prefix)
+    os.makedirs(cache_dir, exist_ok=True)
 
-    analysis_timestep_fs = merged_settings["write_interval_fs"] * \
-        merged_settings["analysis_stride"]
+    analysis_timestep_fs = write_interval_fs * \
+        analysis_stride
     equilibration_cut_frames = frames_from_ps(
-        merged_settings["equilibration_ps"], merged_settings["write_interval_fs"])
-    preprocessing_cache_fields = dict(**trajectory_cache_fields(trajectory_path), start_idx=equilibration_cut_frames, stride=merged_settings["analysis_stride"],
-                                      write_interval_fs=merged_settings["write_interval_fs"], rigid_body_check=merged_settings["rigid_body_check"])
+        equilibration_ps, write_interval_fs)
+    preprocessing_cache_fields = dict(**trajectory_cache_fields(trajectory_path), start_idx=equilibration_cut_frames, stride=analysis_stride,
+                                      write_interval_fs=write_interval_fs, rigid_body_check=rigid_body_check)
     preprocessing_cache_key = cache_key(**preprocessing_cache_fields)
     preprocessed_cache_path = os.path.join(
-        merged_settings["cache_dir"], f"preprocessed_{preprocessing_cache_key}.npz")
-    rigid_body_check = merged_settings["rigid_body_check"]
+        cache_dir, f"preprocessed_{preprocessing_cache_key}.npz")
     preprocessed = load_or_compute_cached(
         preprocessed_cache_path,
-        lambda: remove_rigid_body_motion_and_align(trajectory_path, equilibration_cut_frames, merged_settings["analysis_stride"],
+        lambda: remove_rigid_body_motion_and_align(trajectory_path, equilibration_cut_frames, analysis_stride,
                                                    rigid_body_check["every_n_frames"], rigid_body_check["rel_tolerance"]))
     n_analysed_frames = len(preprocessed["positions"])
     frame_times_ps = (equilibration_cut_frames + np.arange(n_analysed_frames) *
-                      merged_settings["analysis_stride"]) * merged_settings["write_interval_fs"] * 1e-3
-    print(f"{merged_settings['name']}: {n_analysed_frames} frames from {frame_times_ps[0]:g} to {frame_times_ps[-1]:g} ps, "
+                      analysis_stride) * write_interval_fs * 1e-3
+    print(f"{label}: {n_analysed_frames} frames from {frame_times_ps[0]:g} to {frame_times_ps[-1]:g} ps, "
           f"analysis dt {analysis_timestep_fs:g} fs", flush=True)
 
     breakpoint_frames = [int(np.searchsorted(frame_times_ps, breakpoint_ps))
-                         for breakpoint_ps in merged_settings["breakpoints_ps"]]
+                         for breakpoint_ps in breakpoints_ps]
     if any(not 0 < breakpoint_frame < n_analysed_frames for breakpoint_frame in breakpoint_frames) or breakpoint_frames != sorted(set(breakpoint_frames)):
-        raise ValueError(f"breakpoints_ps {merged_settings['breakpoints_ps']} must be increasing and inside "
+        raise ValueError(f"breakpoints_ps {breakpoints_ps} must be increasing and inside "
                          f"({frame_times_ps[0]:g}, {frame_times_ps[-1]:g}) ps")
     piece_boundaries = [0] + breakpoint_frames + [n_analysed_frames]
     pieces = [(f"piece_{piece_number + 1}", piece_start, piece_end)
@@ -342,10 +334,10 @@ def run(settings, output_dir, inputs):
     analysis_windows = [("all", 0, n_analysed_frames)] + \
         (pieces if breakpoint_frames else [])
     plot_potential(frame_times_ps, preprocessed["energies"],
-                   merged_settings["breakpoints_ps"], f"{output_prefix}_potential_energy.png")
+                   breakpoints_ps, f"{output_prefix}_potential_energy.png")
 
     diffusion_rows = []
-    for species, species_settings in merged_settings["species"].items():
+    for species, species_settings in species.items():
         species_atom_indices = np.flatnonzero(
             preprocessed["symbols"] == species)
         if species_atom_indices.size == 0:
@@ -353,7 +345,7 @@ def run(settings, output_dir, inputs):
         vacf_cache_key = cache_key(
             prep=preprocessing_cache_key, species=species, cutoff_ps=species_settings["vacf_cutoff_ps"])
         vacf_cache_path = os.path.join(
-            merged_settings["cache_dir"], f"vacf_{vacf_cache_key}.npz")
+            cache_dir, f"vacf_{vacf_cache_key}.npz")
         species_velocities = preprocessed["velocities"][:,
                                                         species_atom_indices]
         vacf_cutoff_frames = frames_from_ps(
@@ -383,7 +375,7 @@ def run(settings, output_dir, inputs):
             block_msd_cache_key = cache_key(prep=preprocessing_cache_key, species=species, span=[window_start, window_end],
                                             block_len=block_length_frames)
             block_msd_cache_path = os.path.join(
-                merged_settings["cache_dir"], f"blocks_{block_msd_cache_key}.npz")
+                cache_dir, f"blocks_{block_msd_cache_key}.npz")
             block_msds = load_or_compute_cached(block_msd_cache_path, lambda: blocked_mean_squared_displacement(
                 species_positions, block_length_frames))
             block_lag_frames = np.arange(1, block_length_frames)
@@ -396,11 +388,11 @@ def run(settings, output_dir, inputs):
             diffusion_coefficient_sem = (block_diffusion_coefficients.std(ddof=1) / np.sqrt(len(block_diffusion_coefficients))
                                          if len(block_diffusion_coefficients) > 1 else np.nan)
             global_msd = global_fit = None
-            if merged_settings["use_global_msd"]:
+            if use_global_msd:
                 global_msd_cache_key = cache_key(
                     prep=preprocessing_cache_key, species=species, span=[window_start, window_end])
                 global_msd_cache_path = os.path.join(
-                    merged_settings["cache_dir"], f"msd_{global_msd_cache_key}.npz")
+                    cache_dir, f"msd_{global_msd_cache_key}.npz")
                 global_msd = load_or_compute_cached(global_msd_cache_path,
                                                     lambda: {"msd": mean_squared_displacement(species_positions)[1:]})["msd"]
                 global_fit = fit_diffusion_coefficient(np.arange(1, len(global_msd) + 1), global_msd, fit_start_frame, fit_end_frame,
@@ -416,7 +408,7 @@ def run(settings, output_dir, inputs):
                                    1e-3, fit_end_frame * analysis_timestep_fs * 1e-3,
                                    block_r_squared.mean(), block_r_squared.min(), block_r_squared.max(),
                                    "" if global_fit is None else global_fit[0]])
-            print(f"{merged_settings['name']} [{window_name} | {species}] D = {block_diffusion_coefficients.mean():.6g} "
+            print(f"{label} [{window_name} | {species}] D = {block_diffusion_coefficients.mean():.6g} "
                   f"+- {diffusion_coefficient_sem:.2g} A^2/ps from {len(block_diffusion_coefficients)} blocks, "
                   f"tau {correlation_time_frames * analysis_timestep_fs * 1e-3:.3f} ps, R^2 {block_r_squared.min():.3f}-{block_r_squared.max():.3f}"
                   + ("" if global_fit is None else f", global D {global_fit[0]:.6g}"), flush=True)
@@ -424,13 +416,4 @@ def run(settings, output_dir, inputs):
     write_csv(f"{output_prefix}_diffusion.csv", ["span", "species", "start_ps", "end_ps", "D_mean_A2_per_ps", "D_sem_A2_per_ps", "n_blocks",
                                                  "tau_ps", "block_len_ps", "fit_start_ps", "fit_end_ps", "r2_mean", "r2_min", "r2_max",
                                                  "D_global_A2_per_ps"], diffusion_rows)
-    outputs = [f"{output_prefix}_diffusion.csv"]
-    write_json(os.path.join(output_dir, "outputs.json"), outputs)
-    return outputs
-
-
-if __name__ == "__main__":
-    settings, inputs = standalone_settings(
-        sys.argv[1], "analyze_diffusion", sys.argv[2:])
-    raise_on_problems("analyze_diffusion", settings, inputs)
-    run(settings, ".", inputs)
+    return f"{output_prefix}_diffusion.csv"

@@ -1,9 +1,0 @@
-run_dir = "run_analyze_coordination"
-
-[[stage]]
-module = "analyze_coordination"
-name = "coordination"
-inputs = ["<path/to/diffusion.traj>"]
-write_interval_fs = 10.0
-equilibration_ps = 20.0
-cache_dir = "<path/to/analysis_cache>"
