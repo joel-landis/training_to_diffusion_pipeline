@@ -1,7 +1,7 @@
 run_dir = "run_plot"
 
 [[stage]]
-module = "plot"
+task = "plot"
 name = "plots"
 inputs = ["<path/to/pt36_diffusion.csv>", "<path/to/pt36c1_diffusion.csv>", "<path/to/coordination_pt36c1.npz>"]
 regimes = { pt36c1 = { surface = [1, 3], core = [2] } }

@@ -1,7 +1,7 @@
 run_dir = "run_analyze"
 
 [[stage]]
-module = "analyze"
+task = "analyze"
 name = "analysis"
 inputs = ["<path/to/diffusion.traj>"]
 write_interval_fs = 10.0

@@ -1,7 +1,7 @@
 run_dir = "run_finetune_mace"
 
 [[stage]]
-module = "finetune_mace"
+task = "finetune"
 name = "finetune"
 inputs = ["<path/to/labels_train.xyz>", "<path/to/labels_val.xyz>"]
 device = "cuda"

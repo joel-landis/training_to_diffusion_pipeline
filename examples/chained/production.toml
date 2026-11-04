@@ -28,7 +28,7 @@ ntasks = 20
 time = "48:00:00"
 
 [[stage]]
-module = "generate_cluster"
+task = "generate_clusters"
 name = "cluster_training"
 presets = ["mh1", "md"]
 radius = 7.0
@@ -44,7 +44,7 @@ composition = { Pt = 36, C = 5 }
 composition = { Pt = 18, Ga = 18, C = 5 }
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "data_gen_opes"
 presets = ["mh1", "md"]
 plumed = { pt36c5 = "<path/to/examples/plumed/alpha_ptc_data_gen.dat>", pt18ga18c5 = "<path/to/examples/plumed/alpha_ptga_dop_data_gen.dat>" }
@@ -52,7 +52,7 @@ nsteps = 100000
 write_interval_fs = 50.0
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "data_gen_md"
 presets = ["mh1", "md"]
 inputs = ["cluster_training"]
@@ -60,7 +60,7 @@ nsteps = 100000
 write_interval_fs = 50.0
 
 [[stage]]
-module = "select_frames"
+task = "select_frames"
 name = "selection"
 presets = ["mh1"]
 inputs = ["data_gen_opes", "data_gen_md"]
@@ -68,14 +68,14 @@ frames_per_traj = 300
 val_fraction = 0.2
 
 [[stage]]
-module = "relax_mlip"
+task = "relax_mlip"
 name = "relax_mlip"
 presets = ["mh1"]
 fmax = 0.05
 opt_max_steps = 500
 
 [[stage]]
-module = "relax_vasp"
+task = "relax_vasp"
 name = "relax_vasp"
 presets = ["vasp"]
 
@@ -100,7 +100,7 @@ LCHARG = false
 KPAR = 1
 
 [[stage]]
-module = "label_vasp"
+task = "label_vasp"
 name = "labels"
 presets = ["vasp"]
 
@@ -127,7 +127,7 @@ LMAXMIX = 6
 LMIXTAU = true
 
 [[stage]]
-module = "finetune_mace"
+task = "finetune"
 name = "finetune"
 device = "cuda"
 slurm = { cpus_per_task = 8, mem_per_cpu = "10000M", time = "72:00:00", gpus = "a100-pcie-40gb:1" }
@@ -176,7 +176,7 @@ restart_latest = true
 # composition = { Pt = 18, Ga = 18, C = 5 }
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "opes"
 presets = ["finetuned", "md"]
 inputs = ["data_gen_md"]
@@ -185,13 +185,13 @@ nsteps = 3000000
 write_interval_fs = 100.0
 
 [[stage]]
-module = "opes_minimum"
+task = "opes_minimum"
 name = "opes_minimum"
 temperature_K = 873.0
 colvar_stride = 10
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "diffusion"
 presets = ["finetuned", "md"]
 nsteps = 2500000

@@ -3,8 +3,8 @@
 Workflow from MACE fine-tuning data to diffusion coefficients of clusters: cluster generation, MD, frame selection,
 MLIP and VASP relaxation, VASP labelling, MACE fine-tuning, OPES enhanced sampling, diffusion MD and diffusion analysis.
 
-Each stage is a module in `pipeline/`. The orchestrator chains stages from a TOML config and runs them locally or as
-SLURM jobs.
+Each task is a function in `pipeline/stages.py`, built from the MACE/ASE, VASP, analysis and plot modules in `pipeline/`.
+The orchestrator chains stages from a TOML config and runs them locally or as SLURM jobs.
 
 ## Installation
 
@@ -34,17 +34,25 @@ Run a config from the directory its relative paths refer to:
 python -m pipeline.orchestrator examples/chained/training_round.toml
 ```
 
-`examples/chained/` contains full workflows, `examples/single_stage/` one config per stage; the two VASP stages share
+`examples/chained/` contains full workflows, `examples/single_stage/` one config per task; the two VASP tasks share
 `vasp.toml`. `examples/chained/production.toml` is the full pipeline with production settings. Replace every `<...>`
 placeholder.
 
-A single stage also runs without the orchestrator, in the current directory:
+A single stage runs with a config that holds only that stage:
 
 ```
-python -m pipeline.run_md examples/single_stage/run_md.toml start.traj
+python -m pipeline.orchestrator examples/single_stage/run_md.toml
 ```
 
-The module takes its `[[stage]]` from the config. Input files on the command line replace the stage's `inputs`.
+A Python script can also call the task functions directly. They take the output directory, the input paths and the
+stage settings as keyword arguments, and return the output paths:
+
+```python
+from pipeline import stages
+
+stages.md("md_run", ["start.traj"], name="md", model="mh-1", device="cuda", temperature_K=873.0, timestep_fs=1.0,
+          taut_fs=20.0, nsteps=2000, write_interval_fs=10.0, log_interval_fs=10.0)
+```
 
 ## Config
 
@@ -59,7 +67,7 @@ default_dtype = "float32"
 slurm = { gpus = 1 }
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "data_gen"
 presets = ["mace"]
 inputs = ["<path/to/start.traj>"]
@@ -68,9 +76,9 @@ nsteps = 2000
 
 - `run_dir`: directory for all stage outputs.
 - `[preset.<name>]`: shared settings. A stage includes them with `presets`; its own keys override them.
-- `[[stage]]`: one stage. `module` is one of the stages below, `name` names its directory and output files.
-- `inputs`: list of file paths and names of earlier stages, which can be mixed, e.g. `["analysis", "coordination"]` or
-  `["diffusion", "extra.traj"]`. A stage name is replaced by the outputs of that stage. Without `inputs`, a stage takes
+- `[[stage]]`: one stage. `task` is one of the tasks below, `name` names its directory and output files.
+- `inputs`: list of file paths and names of earlier stages, which can be mixed, e.g. `["data_gen_opes", "data_gen_md"]`
+  or `["analysis", "old_results_diffusion.csv"]`. A stage name is replaced by the outputs of that stage. Without `inputs`, a stage takes
   the outputs of the previous stage. The config check fails if an entry is neither an earlier stage nor an existing
   file, or if it is both.
 - `model`, `head`, `device`, `default_dtype`, `dispersion`, `damping`, `dispersion_xc`: MACE calculator, passed to
@@ -96,7 +104,7 @@ stage fails, the pipeline stops after that stage; rerunning retries the failed i
 
 ### MD settings
 
-Shared by `generate_cluster` and `run_md`.
+Shared by `generate_clusters` and `md`.
 
 | Setting                         | Default  | Meaning                                                      |
 | ------------------------------- | -------- | ------------------------------------------------------------ |
@@ -111,7 +119,7 @@ Shared by `generate_cluster` and `run_md`.
 The thermostat targets the internal temperature of the cluster, so the temperature in `<name>.log` reads lower than
 `temperature_K`.
 
-### `generate_cluster`
+### `generate_clusters`
 
 Builds clusters by random placement in a sphere, BFGS relaxation and MD equilibration. One item per entry of
 `clusters`. Output: `<label>.traj`.
@@ -128,7 +136,7 @@ Builds clusters by random placement in a sphere, BFGS relaxation and MD equilibr
 | `cov_scale`            | 0.8      | minimum distance of other pairs relative to the summed covalent radii    |
 | `max_attempts`         | 50000    | placement attempts per atom                                               |
 
-### `run_md`
+### `md`
 
 Bussi MD, optionally biased with PLUMED. One item per input structure. Output: `<label>.traj`.
 
@@ -190,7 +198,7 @@ Output: `<name>_<split>.traj`.
 `NCORE` is set from `ntasks` unless given in `incar`. Failed frames are listed with a reason in `<name>_status.csv`.
 Rerunning the config resubmits them; a relaxation that reached `NSW` continues from its last geometry.
 
-### `finetune_mace`
+### `finetune`
 
 Runs `mace.cli.run_train` on one `_train` and one `_val` input file. Output: `<mace_args.name>.model`.
 
@@ -212,46 +220,46 @@ trajectory. One item per input trajectory. Output: `<label>.traj`.
 | `state_file`    | `STATE`  | STATE file name                  |
 | `fes_bins`      | none     | grid bins of the FES             |
 
-### `analyze_diffusion`
+### `analyze`
 
-Diffusion coefficient per species from blocked MSD fits. One item per input trajectory. Output:
-`<label>_diffusion.csv` and plots.
+Diffusion coefficient per species from blocked MSD fits, and coordination numbers of every element pair, metal-metal pair
+distances and distances to the centre of mass. One item per input trajectory. Give the stage a `slurm` key, e.g.
+`slurm = { mem_per_cpu = "2G" }`; each trajectory then runs as its own job. Output: `<label>_diffusion.csv`, the VACF and
+MSD plots, and the coordination result `coordination_<key>.npz` in `cache_dir`, which later runs on the same trajectory
+with the same settings reuse.
 
-| Setting            | Default                                        | Meaning                                                                                   |
-| ------------------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `write_interval_fs`| required                                       | trajectory write interval                                                                 |
-| `equilibration_ps` | required                                       | time discarded at the start                                                               |
-| `cache_dir`        | required                                       | cache for intermediate results                                                            |
-| `species.<El>`     | required                                       | `vacf_cutoff_ps`, `vacf_epsilon`, `n_samples_per_block`, `fit_start_ps`, `fit_width_ps`   |
-| `analysis_stride`  | 1                                              | use every n-th frame                                                                      |
-| `breakpoints_ps`   | `[]`                                           | times that split the trajectory; D is also computed per piece                             |
-| `use_global_msd`   | false                                          | also fit the unblocked MSD                                                                |
-| `rigid_body_check` | `{every_n_frames = 500, rel_tolerance = 1e-6}` | check of the rigid-body removal                                                           |
+| Setting             | Default                                        | Meaning                                                                                 |
+| ------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `write_interval_fs` | required                                       | trajectory write interval                                                               |
+| `equilibration_ps`  | required                                       | time discarded at the start                                                             |
+| `cache_dir`         | required                                       | cache for intermediate results                                                          |
+| `species.<El>`      | required                                       | `vacf_cutoff_ps`, `vacf_epsilon`, `n_samples_per_block`, `fit_start_ps`, `fit_width_ps` |
+| `analysis_stride`   | 1                                              | use every n-th frame for the diffusion analysis                                         |
+| `breakpoints_ps`    | `[]`                                           | times that split the trajectory; D is also computed per piece                           |
+| `use_global_msd`    | false                                          | also fit the unblocked MSD                                                              |
+| `rigid_body_check`  | `{every_n_frames = 500, rel_tolerance = 1e-6}` | check of the rigid-body removal                                                         |
+| `stride`            | 10                                             | use every n-th frame for the coordination analysis                                      |
+| `cutoff_factor`     | 1.1                                            | neighbour cutoff relative to the summed covalent radii                                  |
 
-### `analyze_coordination`
+### `plot`
 
-Coordination numbers of every element pair, metal-metal pair distances and distances to the centre of mass. One item per
-input trajectory. The result is kept in `cache_dir` and reused by later runs on the same trajectory with the same
-settings. Output: the cached `coordination_<key>.npz`.
-
-| Setting             | Default  | Meaning                                                 |
-| ------------------- | -------- | ------------------------------------------------------- |
-| `write_interval_fs` | required | trajectory write interval                               |
-| `equilibration_ps`  | required | time discarded at the start                             |
-| `cache_dir`         | required | cache for the results                                   |
-| `stride`            | 10       | use every n-th frame                                    |
-| `cutoff_factor`     | 1.1      | neighbour cutoff relative to the summed covalent radii  |
-
-### `plot_diffusion`
-
-Summary plots from the outputs of `analyze_diffusion` and `analyze_coordination`, e.g. `inputs = ["analysis",
-"coordination"]`. System names must spell out the composition, e.g. `pt36c10` or `pt18ga18c5`. Output in the stage
-directory:
+Summary and structure plots from `<label>_diffusion.csv` and coordination npz files, e.g. `inputs = ["analysis"]`, also
+together with result files of earlier runs. System names must spell out the composition, e.g. `pt36c10` or `pt18ga18c5`.
+Output in the stage directory:
 
 - `overview/by_system/` and `overview/by_c_pt_ratio/`: one plot per group (`pt`, `ptga`) and one for all systems.
 - `highlighted/<name>.png`: one plot per entry of `highlights`.
 - `ratio/dc_over_dpt_<family>.png`: D_C / D_Pt per family.
 - `coordination/<family>_d_<element>.png`: D and mean coordination numbers per family, and `cn_correlations.csv`.
+- `pair_rdf_peak/<family>_<a>_<b>.png`: first pair-distance peak of every metal pair (Pt-Pt, Pt-Ga, Ga-Ga), split into
+  pairs with and without a C-bonded atom. A population with fewer than 5 pairs per frame on average is left out.
+- `metal_per_c/<family>.png`: distinct metal atoms with a C neighbour per C atom.
+- `com_distance_time/<system>.png`: distance of every C atom from the centre of mass over time. Each colour follows one
+  C atom; the colours carry no other meaning.
+- `com_distance_density/<family>.png`: density of the distance from the centre of mass per element.
+
+`pair_rdf_peak` and `metal_per_c` are plotted against C per metal atom: C / Pt for Pt clusters, C / (Pt+Ga) for PtGa
+clusters.
 
 | Setting              | Default | Meaning                                                                                   |
 | -------------------- | ------- | ----------------------------------------------------------------------------------------- |
@@ -260,28 +268,8 @@ directory:
 | `highlights`         | `[]`    | `{name, group, systems, elements}` entries; `systems` may name regimes, e.g. `pt36c1_surface` |
 | `coordination_files` | `{}`    | `{system = npz path}` for coordination files that are not stage inputs                    |
 
-The `__main__` block of `pipeline/plot_diffusion.py` reproduces the report plots without the orchestrator; edit it to
-change data paths, highlights or the plots made.
-
-### `plot_structure`
-
-Structure plots from the outputs of `analyze_coordination`, e.g. `inputs = ["coordination"]`. System names must spell out
-the composition. Output in the stage directory:
-
-- `pair_rdf_peak/<family>_<a>_<b>.png`: first pair-distance peak of every metal pair (Pt-Pt, Pt-Ga, Ga-Ga), split into
-  pairs with and without a C-bonded atom. A population with fewer than 5 pairs per frame on average is left out.
-- `metal_per_c/<family>.png`: distinct metal atoms with a C neighbour per C atom.
-
-Both are plotted against C per metal atom: C / Pt for Pt clusters, C / (Pt+Ga) for PtGa clusters.
-- `com_distance_time/<system>.png`: distance of every C atom from the centre of mass over time. Each colour follows one
-  C atom; the colours carry no other meaning.
-- `com_distance_density/<family>.png`: density of the distance from the centre of mass per element.
-
-| Setting              | Default | Meaning                                                                |
-| -------------------- | ------- | ---------------------------------------------------------------------- |
-| `coordination_files` | `{}`    | `{system = npz path}` for coordination files that are not stage inputs |
-
-The `__main__` block of `pipeline/plot_structure.py` makes these plots without the orchestrator.
+The `__main__` blocks of `pipeline/plot_diffusion.py` and `pipeline/plot_structure.py` make the report plots without the
+orchestrator; edit them to change data paths, highlights or the plots made.
 
 ## Acknowledgements
 

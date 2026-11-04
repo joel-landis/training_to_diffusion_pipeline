@@ -1,7 +1,7 @@
 run_dir = "run"
 
 [[stage]]
-module = "relax_mlip"
+task = "relax_mlip"
 name = "relax"
 inputs = ["frames_train.traj"]
 model = "<path/to/non_compiled.model>"

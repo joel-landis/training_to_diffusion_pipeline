@@ -1,4 +1,4 @@
-"""Entry functions of the pipeline stages, one per operation (the TOML stage's module value).
+"""Entry functions of the pipeline stages, one per operation (the TOML stage's task value).
 
 Each takes the item's output directory, its input paths and the stage settings as keyword arguments, and returns the
 output paths. Building blocks shared by several stages live in the backend modules.
@@ -33,7 +33,7 @@ FES_SCRIPT = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "third_party", "FES_from_State.py")
 
 
-def generate_cluster(output_dir, inputs, *, name, composition, radius, temperature_K, timestep_fs, taut_fs,
+def generate_clusters(output_dir, inputs, *, name, composition, radius, temperature_K, timestep_fs, taut_fs,
                      equilibration_nsteps, write_interval_fs, log_interval_fs, c_c_separation=3.5, cov_scale=0.8,
                      max_attempts=50000, vacuum=10.0, seed=None, fmax=0.1, opt_max_steps=200,
                      remove_rigid_body_interval_fs=10.0, **mace_settings):
@@ -78,7 +78,7 @@ def generate_cluster(output_dir, inputs, *, name, composition, radius, temperatu
     return [f"{output_prefix}.traj"]
 
 
-def run_md(output_dir, inputs, *, name, temperature_K, timestep_fs, taut_fs, nsteps, write_interval_fs, log_interval_fs,
+def md(output_dir, inputs, *, name, temperature_K, timestep_fs, taut_fs, nsteps, write_interval_fs, log_interval_fs,
            seed=None, plumed=None, start_structure_format=None, remove_rigid_body_interval_fs=10.0, **mace_settings):
     """Bussi MD from one start structure, optionally biased with a PLUMED template; returns [<output_dir>/<name>.traj].
 
@@ -86,7 +86,7 @@ def run_md(output_dir, inputs, *, name, temperature_K, timestep_fs, taut_fs, nst
     """
     if len(inputs) != 1:
         raise ValueError(
-            f"run_md needs exactly one start structure, got {inputs}")
+            f"md needs exactly one start structure, got {inputs}")
     output_prefix = os.path.join(output_dir, name)
     start_atoms = read(inputs[0], format=start_structure_format)
     print(f"md: start {inputs[0]} ({len(start_atoms)} atoms, {start_atoms.get_chemical_formula()}), seed {seed}", flush=True)
@@ -239,7 +239,7 @@ def select_frames(output_dir, inputs, *, name, frames_per_traj, device, thin_to=
     return [f"{output_prefix}_train.traj", f"{output_prefix}_val.traj"]
 
 
-def finetune_mace(output_dir, inputs, *, name, device, mace_args):
+def finetune(output_dir, inputs, *, name, device, mace_args):
     """Fine-tune MACE with python -m mace.cli.run_train in output_dir; returns [<output_dir>/<mace_args.name>.model].
 
     inputs: exactly one *_train and one *_val extxyz file. mace_args must contain "name"; train_file, valid_file and device

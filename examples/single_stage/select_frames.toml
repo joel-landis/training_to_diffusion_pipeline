@@ -1,7 +1,7 @@
 run_dir = "run_select_frames"
 
 [[stage]]
-module = "select_frames"
+task = "select_frames"
 name = "selection"
 inputs = ["<path/to/trajectory_a.traj>", "<path/to/trajectory_b.traj>"]
 model = "mh-1"

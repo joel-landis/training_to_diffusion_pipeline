@@ -1,7 +1,7 @@
 run_dir = "run_finetune"
 
 [[stage]]
-module = "finetune_mace"
+task = "finetune"
 name = "finetune"
 inputs = ["data_train.extxyz", "data_val.extxyz"]
 device = "cpu"

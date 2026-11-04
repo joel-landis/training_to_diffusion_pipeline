@@ -1,7 +1,7 @@
 run_dir = "run"
 
 [[stage]]
-module = "generate_cluster"
+task = "generate_clusters"
 name = "cluster"
 model = "<path/to/compiled.model>"
 device = "cpu"

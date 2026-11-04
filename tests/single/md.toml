@@ -1,7 +1,7 @@
 run_dir = "run"
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "md"
 inputs = ["pt36c1_start.traj"]
 model = "<path/to/compiled.model>"

@@ -51,22 +51,22 @@ def missing_files(paths, run_dir):
     return [path for path in paths if not os.path.exists(path) and not inside_run_dir(path)]
 
 
-def stage_parameters(module_name):
+def stage_parameters(task):
     """({setting: default or REQUIRED} of the stage's entry in stages.py, name of its ** parameter or None),
     read from the source without importing it; None if stages.py has no such entry."""
     stage_functions = {node.name: node for node in ast.parse(STAGES_PATH.read_text()).body
                        if isinstance(node, ast.FunctionDef)}
-    if module_name not in stage_functions:
+    if task not in stage_functions:
         return None
-    arguments = stage_functions[module_name].args
+    arguments = stage_functions[task].args
     parameter_defaults = {argument.arg: REQUIRED if default is None else ast.literal_eval(default)
                           for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults)}
     return parameter_defaults, None if arguments.kwarg is None else arguments.kwarg.arg
 
 
-def key_problems(module_name, settings):
+def key_problems(task, settings):
     """Unknown keys, missing required keys and unknown slurm keys."""
-    parameter_defaults, backend_parameter = stage_parameters(module_name)
+    parameter_defaults, backend_parameter = stage_parameters(task)
     backend_required, backend_optional = BACKEND_KEYS.get(
         backend_parameter, ((), ()))
     allowed_keys = set(parameter_defaults) | set(
@@ -153,8 +153,8 @@ def plot_diffusion_problems(settings, run_dir):
 
 
 STAGE_RULES = {
-    "generate_cluster": mace_model_problems,
-    "run_md": run_md_problems,
+    "generate_clusters": mace_model_problems,
+    "md": run_md_problems,
     "select_frames": select_frames_problems,
     "relax_mlip": mace_model_problems,
     "relax_vasp": vasp_problems,
@@ -164,31 +164,31 @@ STAGE_RULES = {
 }
 
 
-def check_stage(module_name, settings, input_files, run_dir=None):
+def check_stage(task, settings, input_files, run_dir=None):
     """Problems with one stage: missing input files, then the keys and rules of every item; empty if the stage can run.
 
     input_files are the stage's inputs that are files, not names of earlier stages. Files inside run_dir are not
     required to exist yet.
     """
-    if stage_parameters(module_name) is None:
-        return [f"unknown module {module_name!r}; it is not a function of {STAGES_PATH}"]
+    if stage_parameters(task) is None:
+        return [f"unknown task {task!r}; it is not a function of {STAGES_PATH}"]
     problems = [
         f"file not found: {path}" for path in missing_files(input_files, run_dir)]
     item_settings_list = [settings]
-    if module_name in ITEMS:
+    if task in ITEMS:
         try:
-            item_settings_list = [item_settings for _, item_settings, _ in ITEMS[module_name](
+            item_settings_list = [item_settings for _, item_settings, _ in ITEMS[task](
                 settings, input_files)] or [settings]
         except (KeyError, ValueError) as error:
             return problems + [f"cannot split into items: {type(error).__name__}: {error}"]
     for item_settings in item_settings_list:
-        problems += check_item(module_name, item_settings, run_dir)
+        problems += check_item(task, item_settings, run_dir)
     return problems
 
 
-def check_item(module_name, item_settings, run_dir):
+def check_item(task, item_settings, run_dir):
     """Problems with the settings of one item: its keys and the stage's rules."""
-    problems = key_problems(module_name, item_settings)
-    if module_name in STAGE_RULES:
-        problems += STAGE_RULES[module_name](item_settings, run_dir)
+    problems = key_problems(task, item_settings)
+    if task in STAGE_RULES:
+        problems += STAGE_RULES[task](item_settings, run_dir)
     return problems

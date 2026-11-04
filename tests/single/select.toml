@@ -1,7 +1,7 @@
 run_dir = "run"
 
 [[stage]]
-module = "select_frames"
+task = "select_frames"
 name = "selection"
 inputs = ["pt36c1_diffusion_21frames.traj"]
 model = "<path/to/non_compiled.model>"

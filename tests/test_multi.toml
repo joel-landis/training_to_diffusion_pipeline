@@ -1,7 +1,7 @@
 run_dir = "run_multi"
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "md"
 model = "<path/to/compiled.model>"
 device = "cpu"

@@ -1,7 +1,7 @@
 run_dir = "run_relax_mlip"
 
 [[stage]]
-module = "relax_mlip"
+task = "relax_mlip"
 name = "relax_mlip"
 inputs = ["<path/to/selection_train.traj>", "<path/to/selection_val.traj>"]
 model = "mh-1"

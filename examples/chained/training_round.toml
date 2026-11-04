@@ -39,7 +39,7 @@ ALGO = "Fast"
 KSPACING = 0.7
 
 [[stage]]
-module = "generate_cluster"
+task = "generate_clusters"
 name = "cluster"
 presets = ["mace", "md"]
 radius = 8.0
@@ -55,40 +55,40 @@ composition = { Pt = 36, C = 1 }
 composition = { Pt = 18, Ga = 18, C = 5 }
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "data_gen"
 presets = ["mace", "md"]
 nsteps = 2000
 seed = 2
 
 [[stage]]
-module = "select_frames"
+task = "select_frames"
 name = "selection"
 presets = ["mace"]
 frames_per_traj = 2
 val_fraction = 0.5
 
 [[stage]]
-module = "relax_mlip"
+task = "relax_mlip"
 name = "relax_mlip"
 presets = ["mace"]
 fmax = 0.5
 opt_max_steps = 20
 
 [[stage]]
-module = "relax_vasp"
+task = "relax_vasp"
 name = "relax_vasp"
 presets = ["vasp"]
 incar = { IBRION = 2, ISIF = 2, POTIM = 0.1, NSW = 3, EDIFFG = -0.5 }
 
 [[stage]]
-module = "label_vasp"
+task = "label_vasp"
 name = "labels"
 presets = ["vasp"]
 incar = { IBRION = 0, NSW = 0 }
 
 [[stage]]
-module = "finetune_mace"
+task = "finetune"
 name = "finetune"
 device = "cuda"
 slurm = { cpus_per_task = 8, mem_per_cpu = "10000M", time = "72:00:00", gpus = 1 }

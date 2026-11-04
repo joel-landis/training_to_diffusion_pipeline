@@ -1,7 +1,7 @@
 run_dir = "run_md"
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "md"
 inputs = ["<path/to/structure_a.traj>", "<path/to/structure_b.traj>"]
 model = "mh-1"

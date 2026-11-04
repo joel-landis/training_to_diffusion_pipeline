@@ -24,14 +24,14 @@ ALGO = "Fast"
 KSPACING = 0.7
 
 [[stage]]
-module = "relax_vasp"
+task = "relax_vasp"
 name = "relax_vasp"
 presets = ["vasp"]
 inputs = ["<path/to/frames_train.traj>", "<path/to/frames_val.traj>"]
 incar = { IBRION = 2, ISIF = 2, POTIM = 0.1, NSW = 3, EDIFFG = -0.5 }
 
 [[stage]]
-module = "label_vasp"
+task = "label_vasp"
 name = "labels"
 presets = ["vasp"]
 incar = { IBRION = 0, NSW = 0 }

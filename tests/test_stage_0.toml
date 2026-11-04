@@ -11,7 +11,7 @@ write_interval_fs = 10.0
 log_interval_fs = 10.0
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "equilibration"
 presets = ["md"]
 inputs = ["pt36c1_start.traj"]

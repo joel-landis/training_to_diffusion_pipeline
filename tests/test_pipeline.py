@@ -94,7 +94,7 @@ def test_skip_done_stages(tmp_path):
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         copy_config("test_stages_0_1.toml", tmp_path)], tmp_path).stdout
-    assert "[00_equilibration] run_md already done" in stdout
+    assert "[00_equilibration] md already done" in stdout
     assert os.path.getmtime(traj) == mtime
     assert (run_dir / "01_production" /
             "pt36c1_start" / "outputs.json").exists()
@@ -110,14 +110,14 @@ def test_rerun_changed_settings(tmp_path):
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         copy_config("test_stage_0_changed.toml", tmp_path)], tmp_path).stdout
-    assert "[00_equilibration] run_md settings or inputs changed" in stdout
+    assert "[00_equilibration] md settings or inputs changed" in stdout
     assert os.path.getmtime(run_dir / "00_equilibration_old_1" /
                             "pt36c1_start" / "pt36c1_start.traj") == mtime
     assert (run_dir / "00_equilibration" / "outputs.json").exists()
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         "test_stage_0_changed.toml"], tmp_path).stdout
-    assert "[00_equilibration] run_md already done" in stdout
+    assert "[00_equilibration] md already done" in stdout
     assert not (run_dir / "00_equilibration_old_2").exists()
 
 
@@ -137,7 +137,7 @@ def test_failed_item_stops_pipeline(tmp_path):
     result = subprocess.run(orchestrator_command,
                             cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode != 0
-    assert "[00_cluster] generate_cluster resuming in" in result.stdout
+    assert "[00_cluster] generate_clusters resuming in" in result.stdout
     assert os.path.getmtime(cluster / "pt36c1" / "pt36c1.traj") == mtime
     assert "unplaceable failed" in result.stderr
 
@@ -174,10 +174,10 @@ def test_presets():
     from pipeline import config
     pipeline_config = {"preset": {"a": {"model": "m", "incar": {
         "ENCUT": 400, "EDIFF": 1e-5}}, "b": {"device": "cuda"}}}
-    stage = {"module": "label_vasp", "presets": [
+    stage = {"task": "label_vasp", "presets": [
         "a", "b"], "incar": {"ENCUT": 300, "NSW": 3}}
     assert config.merge_stage_settings(pipeline_config, stage) == {
-        "module": "label_vasp", "model": "m", "device": "cuda", "incar": {"ENCUT": 300, "EDIFF": 1e-5, "NSW": 3}}
+        "task": "label_vasp", "model": "m", "device": "cuda", "incar": {"ENCUT": 300, "EDIFF": 1e-5, "NSW": 3}}
     assert pipeline_config["preset"]["a"]["incar"] == {
         "ENCUT": 400, "EDIFF": 1e-5}
 
@@ -233,7 +233,7 @@ def test_plumed_input(tmp_path):
     with pytest.raises(ValueError, match="placeholder @Ga@"):
         mlip_dynamics.plumed_input_lines(template, atoms)
     from pipeline.stage_specs import ITEMS
-    stage_items = ITEMS["run_md"]({"name": "opes", "plumed": {
+    stage_items = ITEMS["md"]({"name": "opes", "plumed": {
                                "pt36c1": "ptc.dat", "pt18ga18c5": "ptgac.dat"}}, ["a/pt36c1.traj", "b/pt18ga18c5.traj"])
     assert [(label, item["plumed"]) for label, item, _ in stage_items] == [
         ("pt36c1", "ptc.dat"), ("pt18ga18c5", "ptgac.dat")]

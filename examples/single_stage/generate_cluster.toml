@@ -1,7 +1,7 @@
 run_dir = "run_generate_cluster"
 
 [[stage]]
-module = "generate_cluster"
+task = "generate_clusters"
 name = "cluster"
 model = "mh-1"
 head = "matpes_r2scan"

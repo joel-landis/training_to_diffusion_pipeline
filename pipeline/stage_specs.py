@@ -33,8 +33,8 @@ def one_item_per_md_input(settings, inputs):
 
 
 ITEMS = {
-    "generate_cluster": one_item_per_cluster,
-    "run_md": one_item_per_md_input,
+    "generate_clusters": one_item_per_cluster,
+    "md": one_item_per_md_input,
     "opes_minimum": one_item_per_input,
     "analyze": one_item_per_input,
 }

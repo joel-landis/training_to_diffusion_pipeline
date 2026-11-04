@@ -1,7 +1,7 @@
 run_dir = "run_opes_minimum"
 
 [[stage]]
-module = "opes_minimum"
+task = "opes_minimum"
 name = "opes_minimum"
 inputs = ["<path/to/opes_item_dir/opes.traj>"]
 temperature_K = 873.0

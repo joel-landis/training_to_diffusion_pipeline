@@ -15,7 +15,7 @@ log_interval_fs = 10.0
 slurm = { time = "04:00:00" }
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "opes"
 presets = ["mace", "md"]
 inputs = ["<path/to/start_structure.traj>"]
@@ -25,13 +25,13 @@ write_interval_fs = 100.0
 seed = 5
 
 [[stage]]
-module = "opes_minimum"
+task = "opes_minimum"
 name = "opes_minimum"
 temperature_K = 873.0
 colvar_stride = 10
 
 [[stage]]
-module = "run_md"
+task = "md"
 name = "diffusion"
 presets = ["mace", "md"]
 nsteps = 105000
@@ -39,7 +39,7 @@ write_interval_fs = 10.0
 seed = 6
 
 [[stage]]
-module = "analyze"
+task = "analyze"
 name = "analysis"
 write_interval_fs = 10.0
 equilibration_ps = 20.0
@@ -51,5 +51,5 @@ species.Pt = { vacf_cutoff_ps = 100.0, vacf_epsilon = 0.015, n_samples_per_block
 species.Ga = { vacf_cutoff_ps = 100.0, vacf_epsilon = 0.015, n_samples_per_block = 250, fit_start_ps = 50.0, fit_width_ps = 2.0 }
 
 [[stage]]
-module = "plot"
+task = "plot"
 name = "plots"
