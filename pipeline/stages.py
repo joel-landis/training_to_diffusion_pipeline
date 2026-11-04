@@ -22,7 +22,7 @@ from pipeline import vasp_jobs
 from pipeline.analyze_coordination import coordination_analysis
 from pipeline.analyze_diffusion import diffusion_analysis
 from pipeline.io_utils import unique_split_names, write_csv
-from pipeline.mlip_dynamics import build_dispersed_cluster, relax_with_bfgs, run_bussi_md
+from pipeline.ase_simulation import build_dispersed_cluster, relax_with_bfgs, run_bussi_md
 from pipeline.plot_diffusion import (load_coordination_means, load_diffusion_results, plot_coordination_trends,
                                      plot_diffusion_ratios, plot_highlights, plot_overviews, write_coordination_correlations)
 from pipeline.plot_structure import (plot_com_distance_densities, plot_com_distance_traces, plot_metal_atoms_per_c,

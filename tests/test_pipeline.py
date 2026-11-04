@@ -221,17 +221,17 @@ def test_finetune_mace(tmp_path):
 
 
 def test_plumed_input(tmp_path):
-    from pipeline import mlip_dynamics
+    from pipeline import ase_simulation
     from ase import Atoms
     template = tmp_path / "plumed.dat"
     template.write_text(
         "UNITS LENGTH=A ENERGY=eV TIME=fs\n# @Ga@ in a comment\n\nc: COORDINATION GROUPA=@Pt@ GROUPB=@C@ R_0=2.7\n")
     atoms = Atoms("PtCPt", positions=np.zeros((3, 3)))
-    assert mlip_dynamics.plumed_input_lines(template, atoms) == [
+    assert ase_simulation.plumed_input_lines(template, atoms) == [
         "UNITS LENGTH=A ENERGY=eV TIME=fs", "c: COORDINATION GROUPA=1,3 GROUPB=2 R_0=2.7"]
     template.write_text("c: COORDINATION GROUPA=@Ga@ GROUPB=@C@ R_0=2.7\n")
     with pytest.raises(ValueError, match="placeholder @Ga@"):
-        mlip_dynamics.plumed_input_lines(template, atoms)
+        ase_simulation.plumed_input_lines(template, atoms)
     from pipeline.stage_specs import ITEMS
     stage_items = ITEMS["md"]({"name": "opes", "plumed": {
                                "pt36c1": "ptc.dat", "pt18ga18c5": "ptgac.dat"}}, ["a/pt36c1.traj", "b/pt18ga18c5.traj"])
