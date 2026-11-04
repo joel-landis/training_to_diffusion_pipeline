@@ -69,39 +69,55 @@ def query_job_states(job_ids):
     return state_by_job_id
 
 
+def poll_and_submit_jobs(stage_name, job_dirs, submitted_in_this_call):
+    """One poll round: classify every job from outputs.json, its job_id and sacct, submit the jobs that need it, and add
+    them to submitted_in_this_call. A job that had already failed before this call is resubmitted once.
+    Returns (job_dirs still active, {failed job_dir: SLURM state}).
+    """
+    job_id_by_dir = {job_dir: (Path(job_dir) / "job_id").read_text().strip() for job_dir in job_dirs
+                     if os.path.exists(os.path.join(job_dir, "job_id"))}
+    state_by_job_id = query_job_states(
+        list(job_id_by_dir.values())) if job_id_by_dir else {}
+    done_dirs, active_dirs, failed_state_by_dir, dirs_to_submit = [], [], {}, []
+    job_ids_not_in_sacct = []
+    for job_dir in job_dirs:
+        if os.path.exists(os.path.join(job_dir, "outputs.json")):
+            done_dirs.append(job_dir)
+        elif job_dir not in job_id_by_dir:
+            dirs_to_submit.append(job_dir)
+        # a job submitted moments ago can be missing from sacct; count it as pending
+        elif state_by_job_id.get(job_id_by_dir[job_dir], "PENDING") in ACTIVE_STATES:
+            active_dirs.append(job_dir)
+            if job_id_by_dir[job_dir] not in state_by_job_id:
+                job_ids_not_in_sacct.append(job_id_by_dir[job_dir])
+        elif job_dir in submitted_in_this_call:
+            failed_state_by_dir[job_dir] = state_by_job_id[job_id_by_dir[job_dir]]
+        else:
+            print(f"{stage_name}: resubmitting {job_dir} (previous job {job_id_by_dir[job_dir]} "
+                  f"{state_by_job_id[job_id_by_dir[job_dir]]})", flush=True)
+            dirs_to_submit.append(job_dir)
+    for job_dir in dirs_to_submit:
+        submit_job(job_dir)
+        submitted_in_this_call.add(job_dir)
+    # a job that stays unlisted for many polls is never counted as finished; the log shows which one it is
+    not_in_sacct_note = (f", {len(job_ids_not_in_sacct)} not listed by sacct (job {', '.join(job_ids_not_in_sacct)})"
+                         if job_ids_not_in_sacct else "")
+    print(f"{stage_name}: {len(done_dirs)} done, {len(failed_state_by_dir)} failed, "
+          f"{len(active_dirs) + len(dirs_to_submit)} active{not_in_sacct_note}", flush=True)
+    return active_dirs + dirs_to_submit, failed_state_by_dir
+
+
 def submit_and_wait_for_jobs(stage_name, job_dirs, poll_interval_s):
     """Submit every job not submitted yet and poll sacct until no job is pending or running.
 
-    A job succeeded if it wrote job_dir/outputs.json. A job that had already failed before this call is resubmitted once; a job
-    that fails during this call stays failed.
+    A job succeeded if it wrote job_dir/outputs.json. A job that fails during this call stays failed.
     Returns ({job_dir: job ID}, {failed job_dir: SLURM state}).
     """
     submitted_in_this_call = set()
-    while True:
-        job_id_by_dir = {job_dir: (Path(job_dir) / "job_id").read_text().strip() for job_dir in job_dirs
-                         if os.path.exists(os.path.join(job_dir, "job_id"))}
-        state_by_job_id = query_job_states(
-            list(job_id_by_dir.values())) if job_id_by_dir else {}
-        done_dirs, active_dirs, failed_state_by_dir, dirs_to_submit = [], [], {}, []
-        for job_dir in job_dirs:
-            if os.path.exists(os.path.join(job_dir, "outputs.json")):
-                done_dirs.append(job_dir)
-            elif job_dir not in job_id_by_dir:
-                dirs_to_submit.append(job_dir)
-            # a job submitted moments ago can be missing from sacct; count it as pending
-            elif state_by_job_id.get(job_id_by_dir[job_dir], "PENDING") in ACTIVE_STATES:
-                active_dirs.append(job_dir)
-            elif job_dir in submitted_in_this_call:
-                failed_state_by_dir[job_dir] = state_by_job_id[job_id_by_dir[job_dir]]
-            else:
-                print(f"{stage_name}: resubmitting {job_dir} (previous job {job_id_by_dir[job_dir]} "
-                      f"{state_by_job_id[job_id_by_dir[job_dir]]})", flush=True)
-                dirs_to_submit.append(job_dir)
-        for job_dir in dirs_to_submit:
-            submit_job(job_dir)
-            submitted_in_this_call.add(job_dir)
-        print(f"{stage_name}: {len(done_dirs)} done, {len(failed_state_by_dir)} failed, "
-              f"{len(active_dirs) + len(dirs_to_submit)} active", flush=True)
-        if not dirs_to_submit and not active_dirs:
-            return {job_dir: (Path(job_dir) / "job_id").read_text().strip() for job_dir in job_dirs}, failed_state_by_dir
+    active_dirs, failed_state_by_dir = poll_and_submit_jobs(
+        stage_name, job_dirs, submitted_in_this_call)
+    while active_dirs:
         time.sleep(poll_interval_s)
+        active_dirs, failed_state_by_dir = poll_and_submit_jobs(
+            stage_name, job_dirs, submitted_in_this_call)
+    return {job_dir: (Path(job_dir) / "job_id").read_text().strip() for job_dir in job_dirs}, failed_state_by_dir
