@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import subprocess
@@ -22,11 +21,6 @@ def run_python(args, cwd, env=None):
 def copy_config(name, tmp_path):
     shutil.copy(HERE / name, tmp_path)
     return name
-
-
-def read_json(path):
-    with open(path) as json_file:
-        return json.load(json_file)
 
 
 def copy_structures(tmp_path):
@@ -77,8 +71,7 @@ def test_several_structures(tmp_path):
     for label in ("pt36c1_start", "pt18ga18c5_start"):
         assert (tmp_path / "run_multi" / "01_md" /
                 label / f"{label}.traj").exists()
-    assert len(read_json(tmp_path / "run_multi" /
-               "01_md" / "outputs.json")) == 2
+    assert not (tmp_path / "run_multi" / "01_md" / "outputs.json").exists()
     assert "finished:" in stdout
 
 
@@ -88,7 +81,7 @@ def test_skip_done_stages(tmp_path):
                copy_config("test_stage_0.toml", tmp_path)], tmp_path)
     run_dir = tmp_path / "run_skip"
     traj = run_dir / "01_equilibration" / "pt36c1_start" / "pt36c1_start.traj"
-    assert (run_dir / "01_equilibration" / "outputs.json").exists()
+    assert (run_dir / "01_equilibration" / "pt36c1_start" / "outputs.json").exists()
     assert not (run_dir / "02_production").exists()
     mtime = os.path.getmtime(traj)
 
@@ -113,7 +106,7 @@ def test_rerun_changed_settings(tmp_path):
     assert "[01_equilibration] md settings or inputs changed" in stdout
     assert os.path.getmtime(run_dir / "01_equilibration_old_1" /
                             "pt36c1_start" / "pt36c1_start.traj") == mtime
-    assert (run_dir / "01_equilibration" / "outputs.json").exists()
+    assert (run_dir / "01_equilibration" / "pt36c1_start" / "outputs.json").exists()
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         "test_stage_0_changed.toml"], tmp_path).stdout

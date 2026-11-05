@@ -126,11 +126,25 @@ def run_work_units_in_process(task, work_units):
     return failure_reason_by_unit_dir
 
 
+def work_unit_outputs(work_units):
+    """The output paths of all work units, from their outputs.json, in work unit order."""
+    return [output_path for unit in work_units
+            for output_path in json.loads(Path(unit.directory, "outputs.json").read_text())]
+
+
+def finished_stage_outputs(task, settings, stage_dir, inputs):
+    """The outputs of a stage whose work units have all finished; None if any work unit has no outputs.json yet."""
+    work_units = stage_work_units(task, settings, stage_dir, inputs)
+    if not all(os.path.exists(os.path.join(unit.directory, "outputs.json")) for unit in work_units):
+        return None
+    return work_unit_outputs(work_units)
+
+
 def run_stage(task, settings, stage_dir, inputs):
     """Run all work units of one stage, as SLURM jobs if settings has "slurm", otherwise in this process.
 
-    Work units run in <stage_dir>/<label>; work units with an outputs.json are skipped. Raises if any work unit failed, otherwise writes
-    <stage_dir>/outputs.json with the outputs of all work units and returns them.
+    Work units run in <stage_dir>/<label>; work units with an outputs.json are skipped. Raises if any work unit failed,
+    otherwise returns the outputs of all work units.
     """
     work_units = stage_work_units(task, settings, stage_dir, inputs)
     if "slurm" in settings:
@@ -145,10 +159,7 @@ def run_stage(task, settings, stage_dir, inputs):
     if failure_reason_by_unit_dir:
         raise RuntimeError(
             f"{settings['name']}: {len(failure_reason_by_unit_dir)} of {len(work_units)} work units failed")
-    stage_outputs = [output_path for unit in work_units
-                     for output_path in json.loads(Path(unit.directory, "outputs.json").read_text())]
-    write_json(os.path.join(stage_dir, "outputs.json"), stage_outputs)
-    return stage_outputs
+    return work_unit_outputs(work_units)
 
 
 def run_pipeline(pipeline_config):
@@ -170,17 +181,16 @@ def run_pipeline(pipeline_config):
         stage_dir = os.path.join(
             pipeline_config["run_dir"], f"{stage_index:02d}_{stage_settings['name']}")
         stage_label = f"[{stage_index:02d}_{stage_settings['name']}]"
-        stage_outputs_file = os.path.join(stage_dir, "outputs.json")
         stage_input_file = os.path.join(stage_dir, "stage_input.json")
         current_stage_input = {"task": task,
                                "settings": stage_settings, "inputs": stage_inputs}
         recorded_stage_input = json.loads(
             Path(stage_input_file).read_text()) if os.path.exists(stage_input_file) else None
         if not earlier_stage_ran and recorded_stage_input == current_stage_input:
-            if os.path.exists(stage_outputs_file):
-                # already done: same settings and inputs as the recorded run, and that run finished
-                stage_outputs = json.loads(
-                    Path(stage_outputs_file).read_text())
+            stage_outputs = finished_stage_outputs(
+                task, stage_settings, stage_dir, stage_inputs)
+            if stage_outputs is not None:
+                # already done: same settings and inputs as the recorded run, and all its work units finished
                 outputs_by_stage_name[stage_settings["name"]] = stage_outputs
                 previous_stage_outputs = stage_outputs
                 print(
