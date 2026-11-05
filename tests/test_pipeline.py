@@ -37,7 +37,7 @@ def copy_structures(tmp_path):
 def test_generate_cluster(tmp_path):
     shutil.copy(HERE / "single" / "gen.toml", tmp_path)
     run_python(["-m", "pipeline.orchestrator", "gen.toml"], tmp_path)
-    unit_dir = tmp_path / "run" / "00_cluster" / "cluster"
+    unit_dir = tmp_path / "run" / "01_cluster" / "cluster"
     for name in ("cluster.traj", "cluster_relaxed.traj", "cluster_equilibration.traj", "outputs.json"):
         assert (unit_dir / name).exists(), name
 
@@ -46,7 +46,7 @@ def test_run_md(tmp_path):
     shutil.copy(HERE / "single" / "md.toml", tmp_path)
     copy_structures(tmp_path)
     run_python(["-m", "pipeline.orchestrator", "md.toml"], tmp_path)
-    unit_dir = tmp_path / "run" / "00_md" / "pt36c1_start"
+    unit_dir = tmp_path / "run" / "01_md" / "pt36c1_start"
     for name in ("pt36c1_start.traj", "pt36c1_start.log", "outputs.json"):
         assert (unit_dir / name).exists(), name
 
@@ -55,7 +55,7 @@ def test_select_frames(tmp_path):
     shutil.copy(HERE / "single" / "select.toml", tmp_path)
     copy_structures(tmp_path)
     run_python(["-m", "pipeline.orchestrator", "select.toml"], tmp_path)
-    stage_dir = tmp_path / "run" / "00_selection"
+    stage_dir = tmp_path / "run" / "01_selection"
     for name in ("selection_train.traj", "selection_val.traj", "selection_provenance.csv", "outputs.json"):
         assert (stage_dir / name).exists(), name
 
@@ -65,7 +65,7 @@ def test_relax_mlip(tmp_path):
     write(tmp_path / "frames_train.traj", read(HERE / "fixtures" /
           "structures" / "pt36c1_diffusion_21frames.traj", index=":2"))
     run_python(["-m", "pipeline.orchestrator", "relax_mlip.toml"], tmp_path)
-    stage_dir = tmp_path / "run" / "00_relax"
+    stage_dir = tmp_path / "run" / "01_relax"
     for name in ("relax_train.traj", "relax_relax.csv", "outputs.json"):
         assert (stage_dir / name).exists(), name
 
@@ -75,10 +75,10 @@ def test_several_structures(tmp_path):
     stdout = run_python(["-m", "pipeline.orchestrator",
                         copy_config("test_multi.toml", tmp_path)], tmp_path).stdout
     for label in ("pt36c1_start", "pt18ga18c5_start"):
-        assert (tmp_path / "run_multi" / "00_md" /
+        assert (tmp_path / "run_multi" / "01_md" /
                 label / f"{label}.traj").exists()
     assert len(read_json(tmp_path / "run_multi" /
-               "00_md" / "outputs.json")) == 2
+               "01_md" / "outputs.json")) == 2
     assert "finished:" in stdout
 
 
@@ -87,16 +87,16 @@ def test_skip_done_stages(tmp_path):
     run_python(["-m", "pipeline.orchestrator",
                copy_config("test_stage_0.toml", tmp_path)], tmp_path)
     run_dir = tmp_path / "run_skip"
-    traj = run_dir / "00_equilibration" / "pt36c1_start" / "pt36c1_start.traj"
-    assert (run_dir / "00_equilibration" / "outputs.json").exists()
-    assert not (run_dir / "01_production").exists()
+    traj = run_dir / "01_equilibration" / "pt36c1_start" / "pt36c1_start.traj"
+    assert (run_dir / "01_equilibration" / "outputs.json").exists()
+    assert not (run_dir / "02_production").exists()
     mtime = os.path.getmtime(traj)
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         copy_config("test_stages_0_1.toml", tmp_path)], tmp_path).stdout
-    assert "[00_equilibration] md already done" in stdout
+    assert "[01_equilibration] md already done" in stdout
     assert os.path.getmtime(traj) == mtime
-    assert (run_dir / "01_production" /
+    assert (run_dir / "02_production" /
             "pt36c1_start" / "outputs.json").exists()
 
 
@@ -106,25 +106,25 @@ def test_rerun_changed_settings(tmp_path):
                copy_config("test_stage_0.toml", tmp_path)], tmp_path)
     run_dir = tmp_path / "run_skip"
     mtime = os.path.getmtime(
-        run_dir / "00_equilibration" / "pt36c1_start" / "pt36c1_start.traj")
+        run_dir / "01_equilibration" / "pt36c1_start" / "pt36c1_start.traj")
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         copy_config("test_stage_0_changed.toml", tmp_path)], tmp_path).stdout
-    assert "[00_equilibration] md settings or inputs changed" in stdout
-    assert os.path.getmtime(run_dir / "00_equilibration_old_1" /
+    assert "[01_equilibration] md settings or inputs changed" in stdout
+    assert os.path.getmtime(run_dir / "01_equilibration_old_1" /
                             "pt36c1_start" / "pt36c1_start.traj") == mtime
-    assert (run_dir / "00_equilibration" / "outputs.json").exists()
+    assert (run_dir / "01_equilibration" / "outputs.json").exists()
 
     stdout = run_python(["-m", "pipeline.orchestrator",
                         "test_stage_0_changed.toml"], tmp_path).stdout
-    assert "[00_equilibration] md already done" in stdout
-    assert not (run_dir / "00_equilibration_old_2").exists()
+    assert "[01_equilibration] md already done" in stdout
+    assert not (run_dir / "01_equilibration_old_2").exists()
 
 
 def test_failed_work_unit_stops_pipeline(tmp_path):
     orchestrator_command = [
         sys.executable, "-m", "pipeline.orchestrator", copy_config("test_fail.toml", tmp_path)]
-    cluster = tmp_path / "run_fail" / "00_cluster"
+    cluster = tmp_path / "run_fail" / "01_cluster"
     result = subprocess.run(orchestrator_command,
                             cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode != 0
@@ -137,7 +137,7 @@ def test_failed_work_unit_stops_pipeline(tmp_path):
     result = subprocess.run(orchestrator_command,
                             cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode != 0
-    assert "[00_cluster] generate_clusters resuming in" in result.stdout
+    assert "[01_cluster] generate_clusters resuming in" in result.stdout
     assert os.path.getmtime(cluster / "pt36c1" / "pt36c1.traj") == mtime
     assert "unplaceable failed" in result.stderr
 
@@ -215,7 +215,7 @@ def test_finetune_mace(tmp_path):
     write(tmp_path / "data_val.extxyz", frames[4:], format="extxyz")
     run_python(["-m", "pipeline.orchestrator",
                copy_config("test_finetune.toml", tmp_path)], tmp_path)
-    finetune = tmp_path / "run_finetune" / "00_finetune"
+    finetune = tmp_path / "run_finetune" / "01_finetune"
     for name in ("tiny.model", "outputs.json"):
         assert (finetune / name).exists(), name
 
@@ -244,6 +244,6 @@ def test_opes_minimum(tmp_path):
         shutil.copy(path, tmp_path)
     shutil.copy(HERE / "single" / "opes_minimum.toml", tmp_path)
     run_python(["-m", "pipeline.orchestrator", "opes_minimum.toml"], tmp_path)
-    unit_dir = tmp_path / "run" / "00_opes_minimum" / "opes"
+    unit_dir = tmp_path / "run" / "01_opes_minimum" / "opes"
     for name in ("opes.traj", "opes_fes.dat", "outputs.json"):
         assert (unit_dir / name).exists(), name

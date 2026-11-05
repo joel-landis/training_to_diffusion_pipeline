@@ -45,7 +45,7 @@ def check_pipeline(pipeline_stages, run_dir):
     run_dir = os.path.abspath(run_dir)
     problems = []
     earlier_stage_names = []
-    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages):
+    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages, start=1):
         stage_label = f"[{stage_index:02d}_{stage_settings.get('name')}]"
         referenced_stage_names = [
             entry for entry in explicit_inputs or [] if entry in earlier_stage_names]
@@ -162,7 +162,7 @@ def run_pipeline(pipeline_config):
     outputs_by_stage_name = {}
     # inputs are compared by path, not content: once a stage has run, every later stage must rerun
     earlier_stage_ran = False
-    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages):
+    for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages, start=1):
         # without "inputs" the stage takes the previous stage's outputs; in "inputs", the name of an earlier stage
         # stands for that stage's outputs and any other entry is a file path
         stage_inputs = previous_stage_outputs if explicit_inputs is None else [

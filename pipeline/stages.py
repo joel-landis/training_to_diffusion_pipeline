@@ -80,12 +80,18 @@ def md(output_dir, inputs, *, name, temperature_K, timestep_fs, taut_fs, nsteps,
            seed=None, plumed=None, start_structure_format=None, remove_rigid_body_interval_fs=10.0, **mace_settings):
     """Bussi MD from one start structure, optionally biased with a PLUMED template; returns [<output_dir>/<name>.traj].
 
-    The start structure's velocities are not used. PLUMED output files (COLVAR, STATE, ...) are written to output_dir.
+    The start structure's velocities are not used; it is linked as start<ext> in output_dir. PLUMED output files (COLVAR,
+    STATE, ...) are written to output_dir.
     """
     if len(inputs) != 1:
         raise ValueError(
             f"md needs exactly one start structure, got {inputs}")
     output_prefix = os.path.join(output_dir, name)
+    start_link = os.path.join(
+        output_dir, "start" + os.path.splitext(inputs[0])[1])
+    # a resumed work unit keeps the link of its first attempt
+    if not os.path.lexists(start_link):
+        os.symlink(os.path.relpath(inputs[0], output_dir), start_link)
     start_atoms = read(inputs[0], format=start_structure_format)
     print(f"md: start {inputs[0]} ({len(start_atoms)} atoms, {start_atoms.get_chemical_formula()}), seed {seed}", flush=True)
     print(f"md: calculator {mace_settings}, plumed {plumed}", flush=True)
