@@ -1,4 +1,4 @@
-# Stages 08-10 use the model fine-tuned in stage 07 (run_production/07_finetune/<name>_compiled.model).
+# Stages 09-11 use the model fine-tuned in stage 08 (run_production/08_finetune/<name>_compiled.model).
 # Latest production model: mh-1-fp32-v2-rng-42.
 run_dir = "run_production"
 
@@ -10,7 +10,7 @@ default_dtype = "float32"
 slurm = { gpus = 1 }
 
 [preset.finetuned]
-model = "run_production/07_finetune/mh-1-finetuned_compiled.model"
+model = "run_production/08_finetune/mh-1-finetuned_compiled.model"
 device = "cuda"
 default_dtype = "float32"
 slurm = { time = "120:00:00", gpus = 1 }
@@ -160,7 +160,7 @@ default_dtype = "float32"
 restart_latest = true
 
 # [[stage]]
-# module = "generate_cluster"
+# task = "generate_clusters"
 # name = "cluster"
 # presets = ["finetuned", "md"]
 # radius = 7.0

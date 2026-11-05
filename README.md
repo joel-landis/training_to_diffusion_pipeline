@@ -37,7 +37,7 @@ placeholder.
 A single stage runs with a config that holds only that stage:
 
 ```
-python -m pipeline.orchestrator examples/single_stage/run_md.toml
+python -m pipeline.orchestrator examples/single_stage/md.toml
 ```
 
 A Python script can also call the task functions directly. They take the output directory, the input paths and the

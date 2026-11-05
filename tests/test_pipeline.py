@@ -78,7 +78,7 @@ def test_several_structures(tmp_path):
 def test_skip_done_stages(tmp_path):
     copy_structures(tmp_path)
     run_python(["-m", "pipeline.orchestrator",
-               copy_config("test_stage_0.toml", tmp_path)], tmp_path)
+               copy_config("test_stage_1.toml", tmp_path)], tmp_path)
     run_dir = tmp_path / "run_skip"
     traj = run_dir / "01_equilibration" / "pt36c1_start" / "pt36c1_start.traj"
     assert (run_dir / "01_equilibration" / "pt36c1_start" / "outputs.json").exists()
@@ -86,7 +86,7 @@ def test_skip_done_stages(tmp_path):
     mtime = os.path.getmtime(traj)
 
     stdout = run_python(["-m", "pipeline.orchestrator",
-                        copy_config("test_stages_0_1.toml", tmp_path)], tmp_path).stdout
+                        copy_config("test_stages_1_2.toml", tmp_path)], tmp_path).stdout
     assert "[01_equilibration] md already done" in stdout
     assert os.path.getmtime(traj) == mtime
     assert (run_dir / "02_production" /
@@ -96,20 +96,20 @@ def test_skip_done_stages(tmp_path):
 def test_rerun_changed_settings(tmp_path):
     copy_structures(tmp_path)
     run_python(["-m", "pipeline.orchestrator",
-               copy_config("test_stage_0.toml", tmp_path)], tmp_path)
+               copy_config("test_stage_1.toml", tmp_path)], tmp_path)
     run_dir = tmp_path / "run_skip"
     mtime = os.path.getmtime(
         run_dir / "01_equilibration" / "pt36c1_start" / "pt36c1_start.traj")
 
     stdout = run_python(["-m", "pipeline.orchestrator",
-                        copy_config("test_stage_0_changed.toml", tmp_path)], tmp_path).stdout
+                        copy_config("test_stage_1_changed.toml", tmp_path)], tmp_path).stdout
     assert "[01_equilibration] md settings or inputs changed" in stdout
     assert os.path.getmtime(run_dir / "01_equilibration_old_1" /
                             "pt36c1_start" / "pt36c1_start.traj") == mtime
     assert (run_dir / "01_equilibration" / "pt36c1_start" / "outputs.json").exists()
 
     stdout = run_python(["-m", "pipeline.orchestrator",
-                        "test_stage_0_changed.toml"], tmp_path).stdout
+                        "test_stage_1_changed.toml"], tmp_path).stdout
     assert "[01_equilibration] md already done" in stdout
     assert not (run_dir / "01_equilibration_old_2").exists()
 
