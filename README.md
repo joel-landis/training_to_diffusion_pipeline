@@ -50,6 +50,32 @@ stages.md("md_run", ["start.traj"], name="md", model="mh-1", device="cuda", temp
           taut_fs=20.0, nsteps=2000, write_interval_fs=10.0, log_interval_fs=10.0)
 ```
 
+## Changes from v0.1
+
+The previous version is on the branch `v.0.1`. The pipeline does the same; configs written for v0.1 need these
+adjustments:
+
+- The stage key `module` is now `task`. Renamed and merged tasks, with the example config that replaces the old one:
+
+  | v0.1 `module`                               | `task`                                         | Example config                                                                       |
+  | ------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+  | `generate_cluster`                          | `generate_clusters`                            | [`generate_clusters.toml`](examples/single_stage/generate_clusters.toml)             |
+  | `run_md`                                    | `md`                                           | [`md.toml`](examples/single_stage/md.toml)                                           |
+  | `finetune_mace`                             | `finetune`                                     | [`finetune.toml`](examples/single_stage/finetune.toml)                               |
+  | `analyze_diffusion`, `analyze_coordination` | `analyze`, one stage with the settings of both | [`analyze.toml`](examples/single_stage/analyze.toml)                                 |
+  | `plot_diffusion`, `plot_structure`          | `plot`, one stage with the settings of both    | [`plot.toml`](examples/single_stage/plot.toml)                                       |
+
+  `select_frames`, `relax_mlip`, `relax_vasp`, `label_vasp` and `opes_minimum` are unchanged.
+- GPUs: `device = "cuda"` no longer requests a GPU by itself, and `slurm.gpu_class` is gone. Request GPUs with
+  `slurm.gpus`, e.g. `gpus = 1` or `gpus = "a100:1"`.
+- A setting that needs the output of an earlier stage names that stage, e.g. `model = "finetune"`, instead of a path
+  into the run directory. Every file path in the config must exist when the pipeline starts.
+- `analyze` takes only trajectories. The plots are a separate `plot` stage, e.g. `inputs = ["analysis"]`.
+- A single stage no longer runs as `python -m pipeline.<module> config.toml inputs`. Use a config with only that stage,
+  or call the task function from Python (see Usage).
+- Stage directories are numbered from `01_` instead of `00_`. Run directories of v0.1 are not picked up: a rerun
+  starts with the first stage.
+
 ## Config
 
 ```toml
