@@ -13,6 +13,8 @@ from pipeline.io_utils import write_csv, write_text
 
 SCF_CONVERGED_MARKER = "aborting loop because EDIFF is reached"
 RELAX_CONVERGED_MARKER = "reached required accuracy - stopping structural energy minimisation"
+# SLURM writes a frame job's logs to <prefix><job id>.out and .err
+JOB_LOG_PREFIX = "vasp_"
 VASP_REQUIRED = ("incar", "potcars", "ntasks", "time")
 VASP_DEFAULTS = {
     "kpoints": None,
@@ -91,8 +93,8 @@ def vasp_job_script(vasp_settings, job_name, vasp_executable, files_copied_to_sc
         f"#SBATCH --ntasks={vasp_settings['ntasks']}",
         f"#SBATCH --time={vasp_settings['time']}",
         f"#SBATCH --mem-per-cpu={vasp_settings['mem_per_cpu']}",
-        "#SBATCH --output=vasp_%j.out",
-        "#SBATCH --error=vasp_%j.err",
+        f"#SBATCH --output={JOB_LOG_PREFIX}%j.out",
+        f"#SBATCH --error={JOB_LOG_PREFIX}%j.err",
     ]
     job_script_lines += [
         f"#SBATCH {extra_sbatch_line}" for extra_sbatch_line in vasp_settings["sbatch_args"]]
@@ -226,4 +228,4 @@ def failure_reason(frame_dir, job_id, job_state):
     reason_file = Path(frame_dir, f"failure_{job_id}.txt")
     if reason_file.exists():
         return reason_file.read_text().strip()
-    return f"SLURM state {job_state}; VASP ended before the convergence check, see vasp_{job_id}.err"
+    return f"SLURM state {job_state}; VASP ended before the convergence check, see {JOB_LOG_PREFIX}{job_id}.err"
