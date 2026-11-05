@@ -63,9 +63,11 @@ def md_calculator(mace_calculator, plumed_template, atoms, timestep_fs, temperat
     if plumed_template is None:
         yield mace_calculator
         return
+    # read before the chdir below, so a relative template path refers to the working directory of the run
+    plumed_lines = plumed_input_lines(plumed_template, atoms)
     # PLUMED writes into the working directory; leaving the with block finalizes PLUMED
     with contextlib.chdir(output_dir), ScalarEnergyPlumed(
-            calc=mace_calculator, input=plumed_input_lines(plumed_template, atoms),
+            calc=mace_calculator, input=plumed_lines,
             timestep=timestep_fs * units.fs, atoms=atoms, kT=temperature_K * units.kB) as plumed_biased_calculator:
         yield plumed_biased_calculator
 
