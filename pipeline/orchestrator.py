@@ -53,9 +53,8 @@ def resolve_stage_references(stage_settings, outputs_by_stage_name):
     return resolved_settings
 
 
-def check_pipeline(pipeline_stages, run_dir):
+def check_pipeline(pipeline_stages):
     """Check every stage before anything runs and raise with the full list of problems."""
-    run_dir = os.path.abspath(run_dir)
     problems = []
     earlier_stage_names = []
     for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages, start=1):
@@ -70,12 +69,9 @@ def check_pipeline(pipeline_stages, run_dir):
         if ambiguous_references:
             problems.append(
                 f"{stage_label} {ambiguous_references} are both earlier stage names and existing files")
-        # outputs of earlier stages do not exist yet; a path inside run_dir stands in for them
-        checked_settings = resolve_stage_references(
-            stage_settings, {earlier_stage_name: [os.path.join(run_dir, earlier_stage_name)] for earlier_stage_name in earlier_stage_names})
-        earlier_stage_names.append(stage_settings.get("name"))
         problems += [f"{stage_label} {problem}" for problem in check_stage(
-            task, checked_settings, input_files, run_dir)]
+            task, stage_settings, input_files, earlier_stage_names)]
+        earlier_stage_names.append(stage_settings.get("name"))
     if problems:
         raise RuntimeError(
             "pipeline config check failed:\n" + "\n".join(problems))
@@ -186,7 +182,7 @@ def run_pipeline(pipeline_config):
     setting whose value names an earlier stage gets that stage's output path.
     """
     pipeline_stages = split_stages(pipeline_config)
-    check_pipeline(pipeline_stages, pipeline_config["run_dir"])
+    check_pipeline(pipeline_stages)
     previous_stage_outputs = []
     outputs_by_stage_name = {}
     # inputs are compared by path, not content: once a stage has run, every later stage must rerun

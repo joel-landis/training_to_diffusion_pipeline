@@ -33,13 +33,9 @@ DIFFUSION_SPECIES_KEYS = {"vacf_cutoff_ps", "vacf_epsilon",
 HIGHLIGHT_KEYS = {"name", "group", "systems", "elements"}
 
 
-def missing_files(paths, run_dir):
-    """The paths that do not exist, except paths inside run_dir, which earlier stages may still write; run_dir None exempts nothing."""
-    run_dir_absolute = None if run_dir is None else os.path.abspath(run_dir)
-
-    def inside_run_dir(path):
-        return run_dir_absolute is not None and os.path.commonpath([os.path.abspath(path), run_dir_absolute]) == run_dir_absolute
-    return [path for path in paths if not os.path.exists(path) and not inside_run_dir(path)]
+def missing_files(paths, earlier_stage_names):
+    """The paths that do not exist; the name of an earlier stage stands for that stage's output and is not checked."""
+    return [path for path in paths if path not in earlier_stage_names and not os.path.exists(path)]
 
 
 def stage_parameters(task):
@@ -78,30 +74,30 @@ def key_problems(task, settings):
     return problems
 
 
-def mace_model_problems(settings, run_dir):
+def mace_model_problems(settings, earlier_stage_names):
     """A model that is neither a MACE foundation model name nor a URL must be an existing file."""
     model = settings.get("model")
     if model is None or str(model).startswith("https:") or model in mace_mp_names:
         return []
-    return [f"file not found: {path}" for path in missing_files([model], run_dir)]
+    return [f"file not found: {path}" for path in missing_files([model], earlier_stage_names)]
 
 
-def run_md_problems(settings, run_dir):
+def run_md_problems(settings, earlier_stage_names):
     plumed_templates = settings.get("plumed")
     if isinstance(plumed_templates, dict):
         plumed_templates = list(plumed_templates.values())
     elif plumed_templates is not None:
         plumed_templates = [plumed_templates]
-    return mace_model_problems(settings, run_dir) + [f"file not found: {path}" for path in missing_files(plumed_templates or [], run_dir)]
+    return mace_model_problems(settings, earlier_stage_names) + [f"file not found: {path}" for path in missing_files(plumed_templates or [], earlier_stage_names)]
 
 
-def select_frames_problems(settings, run_dir):
+def select_frames_problems(settings, earlier_stage_names):
     exclude_provenance = settings.get("exclude_provenance")
-    return mace_model_problems(settings, run_dir) + [f"file not found: {path}" for path in
-                                                     missing_files([exclude_provenance] if exclude_provenance else [], run_dir)]
+    return mace_model_problems(settings, earlier_stage_names) + [f"file not found: {path}" for path in
+                                                     missing_files([exclude_provenance] if exclude_provenance else [], earlier_stage_names)]
 
 
-def vasp_problems(settings, run_dir):
+def vasp_problems(settings, earlier_stage_names):
     """INCAR tags that ASE does not know (VASP ignores misspelled tags), kpoints not {mesh, gamma}, missing POTCARs."""
     problems = []
     unknown_incar_tags = {tag.upper() for tag in settings.get(
@@ -118,11 +114,11 @@ def vasp_problems(settings, run_dir):
         potcar_files = [os.path.join(potcar_dir, potcar_subdir, "POTCAR")
                         for potcar_subdir in settings["potcars"].values()]
         problems += [
-            f"file not found: {path}" for path in missing_files(potcar_files, run_dir)]
+            f"file not found: {path}" for path in missing_files(potcar_files, earlier_stage_names)]
     return problems
 
 
-def analyze_diffusion_problems(settings, run_dir):
+def analyze_diffusion_problems(settings, earlier_stage_names):
     """Each species table and rigid_body_check must have exactly their expected keys."""
     problems = []
     for species, species_settings in settings.get("species", {}).items():
@@ -139,7 +135,7 @@ def analyze_diffusion_problems(settings, run_dir):
     return problems
 
 
-def plot_diffusion_problems(settings, run_dir):
+def plot_diffusion_problems(settings, earlier_stage_names):
     return [f"highlights entry {highlight} must have exactly the keys {sorted(HIGHLIGHT_KEYS)}"
             for highlight in settings.get("highlights", []) if set(highlight) != HIGHLIGHT_KEYS]
 
@@ -156,16 +152,15 @@ STAGE_RULES = {
 }
 
 
-def check_stage(task, settings, input_files, run_dir=None):
+def check_stage(task, settings, input_files, earlier_stage_names=()):
     """Problems with one stage: missing input files, then the keys and rules of every work unit; empty if the stage can run.
 
-    input_files are the stage's inputs that are files, not names of earlier stages. Files inside run_dir are not
-    required to exist yet.
+    input_files are the stage's inputs that are files, not names of earlier stages.
     """
     if stage_parameters(task) is None:
         return [f"unknown task {task!r}; it is not a function of {stages.__file__}"]
     problems = [
-        f"file not found: {path}" for path in missing_files(input_files, run_dir)]
+        f"file not found: {path}" for path in missing_files(input_files, earlier_stage_names)]
     unit_settings_list = [settings]
     if task in WORK_UNITS:
         try:
@@ -174,13 +169,13 @@ def check_stage(task, settings, input_files, run_dir=None):
         except (KeyError, ValueError) as error:
             return problems + [f"cannot split into work units: {type(error).__name__}: {error}"]
     for unit_settings in unit_settings_list:
-        problems += check_work_unit(task, unit_settings, run_dir)
+        problems += check_work_unit(task, unit_settings, earlier_stage_names)
     return problems
 
 
-def check_work_unit(task, unit_settings, run_dir):
+def check_work_unit(task, unit_settings, earlier_stage_names):
     """Problems with the settings of one work unit: its keys and the stage's rules."""
     problems = key_problems(task, unit_settings)
     if task in STAGE_RULES:
-        problems += STAGE_RULES[task](unit_settings, run_dir)
+        problems += STAGE_RULES[task](unit_settings, earlier_stage_names)
     return problems
