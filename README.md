@@ -77,6 +77,8 @@ nsteps = 2000
   or `["analysis", "old_results_diffusion.csv"]`. A stage name is replaced by the outputs of that stage. Without `inputs`, a stage takes
   the outputs of the previous stage. The config check fails if an entry is neither an earlier stage nor an existing
   file, or if it is both.
+- A setting whose value is the name of an earlier stage gets that stage's output, e.g. `model = "finetune"` for the model
+  of a `finetune` stage. The same check applies.
 - `model`, `head`, `device`, `default_dtype`, `dispersion`, `damping`, `dispersion_xc`: MACE calculator, passed to
   `mace_mp`.
 - `slurm`: run the stage as SLURM jobs. Without it, the stage runs in the orchestrator process.

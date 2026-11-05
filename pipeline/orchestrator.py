@@ -40,6 +40,19 @@ def split_stages(pipeline_config):
     return pipeline_stages
 
 
+def resolve_stage_references(stage_settings, outputs_by_stage_name):
+    """The stage settings with every value that names an earlier stage replaced by that stage's one output path."""
+    resolved_settings = {}
+    for key, value in stage_settings.items():
+        if key != "name" and isinstance(value, str) and value in outputs_by_stage_name:
+            if len(outputs_by_stage_name[value]) != 1:
+                raise ValueError(
+                    f"setting {key} = {value!r} needs one output of stage {value!r}, it has {outputs_by_stage_name[value]}")
+            value = outputs_by_stage_name[value][0]
+        resolved_settings[key] = value
+    return resolved_settings
+
+
 def check_pipeline(pipeline_stages, run_dir):
     """Check every stage before anything runs and raise with the full list of problems."""
     run_dir = os.path.abspath(run_dir)
@@ -47,18 +60,22 @@ def check_pipeline(pipeline_stages, run_dir):
     earlier_stage_names = []
     for stage_index, (task, stage_settings, explicit_inputs) in enumerate(pipeline_stages, start=1):
         stage_label = f"[{stage_index:02d}_{stage_settings.get('name')}]"
-        referenced_stage_names = [
-            entry for entry in explicit_inputs or [] if entry in earlier_stage_names]
+        referenced_stage_names = [entry for entry in explicit_inputs or [] if entry in earlier_stage_names] + [
+            value for key, value in stage_settings.items()
+            if key != "name" and isinstance(value, str) and value in earlier_stage_names]
         input_files = [
             entry for entry in explicit_inputs or [] if entry not in earlier_stage_names]
-        ambiguous_inputs = [
+        ambiguous_references = [
             entry for entry in referenced_stage_names if os.path.exists(entry)]
-        if ambiguous_inputs:
+        if ambiguous_references:
             problems.append(
-                f"{stage_label} inputs {ambiguous_inputs} are both earlier stage names and existing files")
+                f"{stage_label} {ambiguous_references} are both earlier stage names and existing files")
+        # outputs of earlier stages do not exist yet; a path inside run_dir stands in for them
+        checked_settings = resolve_stage_references(
+            stage_settings, {earlier_stage_name: [os.path.join(run_dir, earlier_stage_name)] for earlier_stage_name in earlier_stage_names})
         earlier_stage_names.append(stage_settings.get("name"))
         problems += [f"{stage_label} {problem}" for problem in check_stage(
-            task, stage_settings, input_files, run_dir)]
+            task, checked_settings, input_files, run_dir)]
     if problems:
         raise RuntimeError(
             "pipeline config check failed:\n" + "\n".join(problems))
@@ -165,7 +182,8 @@ def run_stage(task, settings, stage_dir, inputs):
 def run_pipeline(pipeline_config):
     """Run the [[stage]] list of a config in order, skipping, resuming or rerunning each stage; returns the last stage's outputs.
 
-    A stage gets its "inputs", with names of earlier stages replaced by their outputs, else the previous stage's outputs.
+    A stage gets its "inputs", with names of earlier stages replaced by their outputs, else the previous stage's outputs. A
+    setting whose value names an earlier stage gets that stage's output path.
     """
     pipeline_stages = split_stages(pipeline_config)
     check_pipeline(pipeline_stages, pipeline_config["run_dir"])
@@ -178,6 +196,8 @@ def run_pipeline(pipeline_config):
         # stands for that stage's outputs and any other entry is a file path
         stage_inputs = previous_stage_outputs if explicit_inputs is None else [
             input_path for entry in explicit_inputs for input_path in outputs_by_stage_name.get(entry, [entry])]
+        stage_settings = resolve_stage_references(
+            stage_settings, outputs_by_stage_name)
         stage_dir = os.path.join(
             pipeline_config["run_dir"], f"{stage_index:02d}_{stage_settings['name']}")
         stage_label = f"[{stage_index:02d}_{stage_settings['name']}]"
