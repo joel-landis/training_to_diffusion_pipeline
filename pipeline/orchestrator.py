@@ -83,28 +83,30 @@ class WorkUnit(NamedTuple):
 
 
 def stage_work_units(task, settings, stage_dir, inputs):
-    """The work units of a stage; a new unit directory gets the stage_input.json its SLURM job reads."""
+    """The work units of a stage, each with its directory created."""
     if task not in WORK_UNITS:
         return [WorkUnit(None, settings, inputs, stage_dir)]
     work_units = []
     for unit_label, unit_settings, unit_inputs in WORK_UNITS[task](settings, inputs):
         unit_dir = os.path.join(stage_dir, unit_label)
-        if not os.path.exists(unit_dir):
-            os.makedirs(unit_dir)
-            write_json(os.path.join(unit_dir, "stage_input.json"),
-                       {"task": task, "settings": unit_settings, "inputs": unit_inputs})
+        os.makedirs(unit_dir, exist_ok=True)
         work_units.append(
             WorkUnit(unit_label, unit_settings, unit_inputs, unit_dir))
     return work_units
 
 
-def run_work_units_as_slurm_jobs(stage_name, work_units, poll_interval_s):
-    """Write a job.sh for every unit without one, submit and wait; returns {failed unit directory: reason}."""
+def run_work_units_as_slurm_jobs(stage_name, stage_dir, work_units, poll_interval_s):
+    """Write a job.sh for every unit without one, submit and wait; returns {failed unit directory: reason}.
+
+    Each job runs this module with --run-stage <stage_dir> [<unit label>].
+    """
     for unit in work_units:
         if not os.path.exists(os.path.join(unit.directory, "job.sh")):
             job_name = stage_name if unit.label is None else f"{stage_name}_{unit.label}"
+            run_stage_command = f"{sys.executable} -m pipeline.orchestrator --run-stage {stage_dir}" + (
+                "" if unit.label is None else f" {unit.label}")
             write_text(os.path.join(unit.directory, "job.sh"),
-                       slurm_jobs.slurm_job_script(unit.settings, unit.directory, job_name))
+                       slurm_jobs.slurm_job_script(unit.settings, unit.directory, job_name, run_stage_command))
     _, failed_job_state_by_dir = slurm_jobs.submit_and_wait_for_jobs(
         stage_name, [unit.directory for unit in work_units], poll_interval_s)
     return {unit_dir: f"SLURM job {job_state}, see {unit_dir}/slurm_*.err"
@@ -133,7 +135,7 @@ def run_stage(task, settings, stage_dir, inputs):
     work_units = stage_work_units(task, settings, stage_dir, inputs)
     if "slurm" in settings:
         failure_reason_by_unit_dir = run_work_units_as_slurm_jobs(
-            settings["name"], work_units, settings["slurm"].get("poll_interval_s", 60))
+            settings["name"], stage_dir, work_units, settings["slurm"].get("poll_interval_s", 60))
     else:
         failure_reason_by_unit_dir = run_work_units_in_process(
             task, work_units)
@@ -206,9 +208,14 @@ def run_pipeline(pipeline_config):
 if __name__ == "__main__":
     # entry point of the SLURM jobs written by slurm_jobs.slurm_job_script
     if sys.argv[1] == "--run-stage":
+        stage_dir = sys.argv[2]
+        unit_label = sys.argv[3] if len(sys.argv) > 3 else None
         stage_input = json.loads(
-            Path(sys.argv[2], "stage_input.json").read_text())
-        run_work_unit(stage_input["task"], stage_input["settings"], sys.argv[2], stage_input["inputs"])
+            Path(stage_dir, "stage_input.json").read_text())
+        work_unit = next(unit for unit in stage_work_units(stage_input["task"], stage_input["settings"], stage_dir,
+                                                           stage_input["inputs"]) if unit.label == unit_label)
+        run_work_unit(stage_input["task"], work_unit.settings,
+                      work_unit.directory, work_unit.inputs)
         sys.exit(0)
     print(
         f"finished: {run_pipeline(tomllib.loads(Path(sys.argv[1]).read_text()))}", flush=True)

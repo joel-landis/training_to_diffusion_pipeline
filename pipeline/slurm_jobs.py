@@ -13,11 +13,10 @@ SACCT_ATTEMPTS = 10
 SACCT_RETRY_INTERVAL_S = 60
 
 
-def slurm_job_script(settings, job_dir, job_name):
-    """job.sh text for running one stage work unit as a SLURM job.
+def slurm_job_script(settings, job_dir, job_name, command):
+    """job.sh text that runs command as a SLURM job.
 
-    job_dir holds stage_input.json and receives the SLURM logs; the job_setup lines of site_config.toml run before the
-    stage command.
+    job_dir receives the SLURM logs; the job_setup lines of site_config.toml run before the command.
     """
     slurm_settings = settings["slurm"]
     job_dir_absolute = os.path.abspath(job_dir)
@@ -39,8 +38,7 @@ def slurm_job_script(settings, job_dir, job_name):
         f"#SBATCH {extra_sbatch_line}" for extra_sbatch_line in slurm_settings.get("sbatch_args", [])]
     job_script_lines.append("set -euo pipefail")
     job_script_lines += load_site_config()["job_setup"]
-    job_script_lines.append(
-        f"{sys.executable} -m pipeline.orchestrator --run-stage {job_dir}")
+    job_script_lines.append(command)
     return "\n".join(job_script_lines) + "\n"
 
 

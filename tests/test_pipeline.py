@@ -187,13 +187,13 @@ def test_slurm_gpu_request():
     md_settings = {"name": "production",
                    "slurm": {"time": "72:00:00", "gpus": 1}}
     job_script = slurm_jobs.slurm_job_script(
-        md_settings, "run/01_production/pt36c1", "production_pt36c1")
+        md_settings, "run/01_production/pt36c1", "production_pt36c1", "true")
     assert "#SBATCH --gpus=1\n" in job_script and "#SBATCH --time=72:00:00" in job_script
     job_script = slurm_jobs.slurm_job_script(
-        {**md_settings, "slurm": {"gpus": "rtx_4090:1"}}, "run/01_production/pt36c1", "production_pt36c1")
+        {**md_settings, "slurm": {"gpus": "rtx_4090:1"}}, "run/01_production/pt36c1", "production_pt36c1", "true")
     assert "#SBATCH --gpus=rtx_4090:1\n" in job_script
     job_script = slurm_jobs.slurm_job_script(
-        {"name": "selection", "slurm": {}}, "run/02_selection", "selection")
+        {"name": "selection", "slurm": {}}, "run/02_selection", "selection", "true")
     assert "#SBATCH --time=24:00:00" in job_script and "--gpus" not in job_script
 
 
