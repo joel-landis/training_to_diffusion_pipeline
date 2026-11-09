@@ -21,6 +21,7 @@ Fill in `site_config.toml`:
 - `[vasp]`: POTCAR directory and VASP executables.
 
 VASP, POTCARs, PLUMED and SLURM are only needed for the stages that use them. Biased MD needs `PLUMED_KERNEL` to be set.
+The `plot` stage renders text with LaTeX and needs a LaTeX installation with the `helvet` and `sfmath` packages.
 
 ## Usage
 
@@ -31,7 +32,8 @@ python -m pipeline.orchestrator examples/chained/training_round.toml
 ```
 
 `examples/chained/` contains full workflows, `examples/single_stage/` one config per task; the two VASP tasks share
-`vasp.toml`. `examples/chained/production.toml` is the full pipeline with production settings. Replace every `<...>`
+`vasp.toml`. `examples/chained/production.toml` runs from cluster generation to the diffusion MD with
+production settings. Replace every `<...>`
 placeholder.
 
 A single stage runs with a config that holds only that stage:
@@ -41,7 +43,8 @@ python -m pipeline.orchestrator examples/single_stage/md.toml
 ```
 
 A Python script can also call the task functions directly. They take the output directory, the input (one path, a list
-of paths, or none for `generate_clusters`) and the stage settings as keyword arguments, and return the output paths:
+of paths, or none for `generate_clusters`) and the stage settings as keyword arguments, and return the output paths. The
+output directory must exist:
 
 ```python
 from pipeline import stages
@@ -97,7 +100,9 @@ nsteps = 2000
 ```
 
 - `run_dir`: directory for all stage outputs.
-- `[preset.<name>]`: shared settings. A stage includes them with `presets`; its own keys override them.
+- `[preset.<name>]`: shared settings. A stage includes them with `presets`; they are merged in the listed order, and the
+  stage's own keys are merged last. Tables such as `slurm` and `incar` are merged key by key: a stage's
+  `slurm = { time = "04:00:00" }` keeps the `gpus` of its preset.
 - `[[stage]]`: one stage. `task` is one of the tasks below, `name` names its directory and output files.
 - `inputs`: list of file paths and names of earlier stages, which can be mixed, e.g. `["data_gen_opes", "data_gen_md"]`
   or `["analysis", "old_results_diffusion.csv"]`. A stage name is replaced by the outputs of that stage. Without `inputs`, a stage takes
@@ -170,7 +175,7 @@ Bussi MD, optionally biased with PLUMED. One work unit per input structure. Outp
 | `plumed`                 | none     | PLUMED template, or a table `label = template` per input   |
 | `start_structure_format` | none     | ASE format of the input structure                          |
 
-In PLUMED templates, `@Pt@` is replaced by the indices of all Pt atoms. Use `UNITS LENGTH=A ENERGY=eV TIME=fs`.
+In PLUMED templates, `@<element>@` is replaced by the indices of all atoms of that element, e.g. `@Pt@`. Use `UNITS LENGTH=A ENERGY=eV TIME=fs`.
 Examples are in `examples/plumed/`.
 
 ### `select_frames`

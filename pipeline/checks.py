@@ -137,7 +137,9 @@ def analyze_diffusion_problems(settings, earlier_stage_names):
 
 def plot_diffusion_problems(settings, earlier_stage_names):
     return [f"highlights entry {highlight} must have exactly the keys {sorted(HIGHLIGHT_KEYS)}"
-            for highlight in settings.get("highlights", []) if set(highlight) != HIGHLIGHT_KEYS]
+            for highlight in settings.get("highlights", []) if set(highlight) != HIGHLIGHT_KEYS] + [
+        f"file not found: {path}" for path in missing_files(list(settings.get("coordination_files", {}).values()),
+                                                            earlier_stage_names)]
 
 
 STAGE_RULES = {
