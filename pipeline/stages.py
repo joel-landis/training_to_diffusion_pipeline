@@ -1,7 +1,7 @@
 """Entry functions of the pipeline stages, one per operation (the TOML stage's task value).
 
-Each takes the work unit's output directory, its input paths and the stage settings as keyword arguments, and returns the
-output paths. Building blocks shared by several stages live in the backend modules.
+Each takes the work unit's output directory, its input (one path, a list of paths, or none) and the stage settings as
+keyword arguments, and returns the output paths. Building blocks shared by several stages live in the backend modules.
 """
 import os
 import shutil
@@ -34,13 +34,13 @@ FES_SCRIPT = os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "third_party", "FES_from_State.py")
 
 
-def generate_clusters(output_dir, inputs, *, name, composition, radius, temperature_K, timestep_fs, taut_fs,
+def generate_clusters(output_dir, *, name, composition, radius, temperature_K, timestep_fs, taut_fs,
                      equilibration_nsteps, write_interval_fs, log_interval_fs, c_c_separation=3.5, cov_scale=0.8,
                      max_attempts=50000, vacuum=10.0, seed=None, fmax=0.1, opt_max_steps=200,
                      remove_rigid_body_interval_fs=10.0, **mace_settings):
     """One cluster as a starting point for MD: random placement, BFGS relaxation, Bussi equilibration.
 
-    Returns [<output_dir>/<name>.traj], centred with vacuum Å on each side. inputs is not used.
+    Returns [<output_dir>/<name>.traj], centred with vacuum Å on each side.
     """
     output_prefix = os.path.join(output_dir, name)
     mace_calculator = mace_mp(**mace_settings)
@@ -77,21 +77,18 @@ def generate_clusters(output_dir, inputs, *, name, composition, radius, temperat
     return [f"{output_prefix}.traj"]
 
 
-def md(output_dir, inputs, *, name, temperature_K, timestep_fs, taut_fs, nsteps, write_interval_fs, log_interval_fs,
+def md(output_dir, start_structure_path, *, name, temperature_K, timestep_fs, taut_fs, nsteps, write_interval_fs, log_interval_fs,
            seed=None, plumed=None, start_structure_format=None, remove_rigid_body_interval_fs=10.0, **mace_settings):
     """Bussi MD from one start structure, optionally biased with a PLUMED template; returns [<output_dir>/<name>.traj].
 
     The start structure's velocities are not used; it is copied to start<ext> in output_dir. PLUMED output files (COLVAR,
     STATE, ...) are written to output_dir.
     """
-    if len(inputs) != 1:
-        raise ValueError(
-            f"md needs exactly one start structure, got {inputs}")
     output_prefix = os.path.join(output_dir, name)
-    shutil.copyfile(inputs[0], os.path.join(
-        output_dir, "start" + os.path.splitext(inputs[0])[1]))
-    start_atoms = read(inputs[0], format=start_structure_format)
-    print(f"md: start {inputs[0]} ({len(start_atoms)} atoms, {start_atoms.get_chemical_formula()}), seed {seed}", flush=True)
+    shutil.copyfile(start_structure_path, os.path.join(
+        output_dir, "start" + os.path.splitext(start_structure_path)[1]))
+    start_atoms = read(start_structure_path, format=start_structure_format)
+    print(f"md: start {start_structure_path} ({len(start_atoms)} atoms, {start_atoms.get_chemical_formula()}), seed {seed}", flush=True)
     print(f"md: calculator {mace_settings}, plumed {plumed}", flush=True)
     run_bussi_md(start_atoms, mace_mp(**mace_settings), temperature_K=temperature_K, timestep_fs=timestep_fs, taut_fs=taut_fs,
                  nsteps=nsteps, write_interval_fs=write_interval_fs, log_interval_fs=log_interval_fs,
@@ -374,18 +371,15 @@ def read_plumed_table(path):
     return column_names, table_values
 
 
-def opes_minimum(output_dir, inputs, *, name, temperature_K, colvar_stride, colvar_file="COLVAR", state_file="STATE",
+def opes_minimum(output_dir, trajectory_path, *, name, temperature_K, colvar_stride, colvar_file="COLVAR", state_file="STATE",
                  fes_bins=None):
     """Frame of an OPES trajectory closest in CV space to the minimum of the FES reconstructed from STATE.
 
     STATE and COLVAR are read from the directory of the trajectory; colvar_stride = COLVAR rows per trajectory frame.
     Returns [<output_dir>/<name>.traj]; also writes <name>_fes.dat.
     """
-    if len(inputs) != 1:
-        raise ValueError(
-            f"opes_minimum needs exactly one trajectory, got {inputs}")
     output_prefix = os.path.join(output_dir, name)
-    opes_run_dir = os.path.dirname(inputs[0])
+    opes_run_dir = os.path.dirname(trajectory_path)
 
     fes_file = f"{output_prefix}_fes.dat"
     # FES_from_State.py takes kT in the energy unit of the STATE file, eV here
@@ -409,10 +403,10 @@ def opes_minimum(output_dir, inputs, *, name, temperature_K, colvar_stride, colv
     cv_values_per_frame = colvar_table[::colvar_stride, [
         colvar_column_names.index(cv_name) for cv_name in cv_names]]
 
-    opes_trajectory = Trajectory(inputs[0])
+    opes_trajectory = Trajectory(trajectory_path)
     if len(cv_values_per_frame) != len(opes_trajectory):
         raise ValueError(f"{len(colvar_table)} COLVAR rows with colvar_stride {colvar_stride} give "
-                         f"{len(cv_values_per_frame)} frames, but {inputs[0]} has {len(opes_trajectory)}")
+                         f"{len(cv_values_per_frame)} frames, but {trajectory_path} has {len(opes_trajectory)}")
     cv_distance_to_minimum = np.linalg.norm(
         cv_values_per_frame - fes_minimum_cv_values, axis=1)
     closest_frame_index = int(np.argmin(cv_distance_to_minimum))
@@ -426,18 +420,16 @@ def opes_minimum(output_dir, inputs, *, name, temperature_K, colvar_stride, colv
     return [f"{output_prefix}.traj"]
 
 
-def analyze(output_dir, inputs, *, name, write_interval_fs, equilibration_ps, cache_dir, species, analysis_stride=1,
+def analyze(output_dir, trajectory_path, *, name, write_interval_fs, equilibration_ps, cache_dir, species, analysis_stride=1,
             breakpoints_ps=[], use_global_msd=False, rigid_body_check={"every_n_frames": 500, "rel_tolerance": 1e-6},
             stride=10, cutoff_factor=1.1):
     """Diffusion and coordination analysis of one trajectory; returns [<output_dir>/<name>_diffusion.csv, cached npz]."""
-    if len(inputs) != 1:
-        raise ValueError(f"analyze needs exactly one trajectory, got {inputs}")
     diffusion_csv = diffusion_analysis(
-        inputs[0], os.path.join(output_dir, name), write_interval_fs=write_interval_fs, equilibration_ps=equilibration_ps,
+        trajectory_path, os.path.join(output_dir, name), write_interval_fs=write_interval_fs, equilibration_ps=equilibration_ps,
         cache_dir=cache_dir, species=species, analysis_stride=analysis_stride, breakpoints_ps=breakpoints_ps,
         use_global_msd=use_global_msd, rigid_body_check=rigid_body_check)
     coordination_npz = coordination_analysis(
-        inputs[0], write_interval_fs=write_interval_fs, equilibration_ps=equilibration_ps, cache_dir=cache_dir,
+        trajectory_path, write_interval_fs=write_interval_fs, equilibration_ps=equilibration_ps, cache_dir=cache_dir,
         stride=stride, cutoff_factor=cutoff_factor)
     return [diffusion_csv, coordination_npz]
 

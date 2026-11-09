@@ -13,18 +13,20 @@ from pipeline.io_utils import write_json, write_text
 from pipeline.stage_specs import WORK_UNITS
 
 
-def run_work_unit(task, settings, unit_dir, inputs):
-    """Run one work unit of a stage in this process; writes its settings record and, when it succeeded, outputs.json."""
+def run_work_unit(task, settings, unit_dir, call_arguments):
+    """Run one work unit of a stage in this process; writes its settings record and, when it succeeded, outputs.json.
+
+    call_arguments are the task's positional arguments after unit_dir."""
     stage_function = getattr(stages, task)
     stage_arguments = {key: value for key,
                        value in settings.items() if key != "slurm"}
     # the record holds every setting the stage runs with, defaults included
     bound_arguments = inspect.signature(stage_function).bind(
-        unit_dir, inputs, **stage_arguments)
+        unit_dir, *call_arguments, **stage_arguments)
     bound_arguments.apply_defaults()
     write_json(os.path.join(unit_dir, f"{settings['name']}_settings.json"),
                {key: value for key, value in bound_arguments.arguments.items() if key != "output_dir"})
-    outputs = stage_function(unit_dir, inputs, **stage_arguments)
+    outputs = stage_function(unit_dir, *call_arguments, **stage_arguments)
     write_json(os.path.join(unit_dir, "outputs.json"), outputs)
     return outputs
 
@@ -88,23 +90,24 @@ def move_aside(stage_dir):
 
 class WorkUnit(NamedTuple):
     """One independent part of a stage, with its own directory and, with "slurm", its own job. A stage without fan-out
-    is one unit in the stage directory, with label None."""
+    is one unit in the stage directory, with label None. call_arguments are the task's positional arguments after the
+    directory: [input path], [] or, without fan-out, [all input paths]."""
     label: str | None
     settings: dict
-    inputs: list
+    call_arguments: list
     directory: str
 
 
 def stage_work_units(task, settings, stage_dir, inputs):
     """The work units of a stage, each with its directory created."""
     if task not in WORK_UNITS:
-        return [WorkUnit(None, settings, inputs, stage_dir)]
+        return [WorkUnit(None, settings, [inputs], stage_dir)]
     work_units = []
-    for unit_label, unit_settings, unit_inputs in WORK_UNITS[task](settings, inputs):
+    for unit_label, unit_settings, unit_call_arguments in WORK_UNITS[task](settings, inputs):
         unit_dir = os.path.join(stage_dir, unit_label)
         os.makedirs(unit_dir, exist_ok=True)
         work_units.append(
-            WorkUnit(unit_label, unit_settings, unit_inputs, unit_dir))
+            WorkUnit(unit_label, unit_settings, unit_call_arguments, unit_dir))
     return work_units
 
 
@@ -133,7 +136,7 @@ def run_work_units_in_process(task, work_units):
         if os.path.exists(os.path.join(unit.directory, "outputs.json")):
             continue
         try:
-            run_work_unit(task, unit.settings, unit.directory, unit.inputs)
+            run_work_unit(task, unit.settings, unit.directory, unit.call_arguments)
         except Exception as error:
             failure_reason_by_unit_dir[unit.directory] = f"{type(error).__name__}: {error}"
     return failure_reason_by_unit_dir
@@ -241,7 +244,7 @@ if __name__ == "__main__":
         work_unit = next(unit for unit in stage_work_units(stage_input["task"], stage_input["settings"], stage_dir,
                                                            stage_input["inputs"]) if unit.label == unit_label)
         run_work_unit(stage_input["task"], work_unit.settings,
-                      work_unit.directory, work_unit.inputs)
+                      work_unit.directory, work_unit.call_arguments)
         sys.exit(0)
     print(
         f"finished: {run_pipeline(tomllib.loads(Path(sys.argv[1]).read_text()))}", flush=True)

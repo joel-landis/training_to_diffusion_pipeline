@@ -1,6 +1,7 @@
 """Fan-out of the stages whose work units run separately, e.g. as one SLURM job each; readable without importing stages.py.
 
-WORK_UNITS[stage](settings, inputs) -> [(label, work unit settings, work unit inputs)]; each work unit runs in <stage dir>/<label>.
+WORK_UNITS[stage](settings, inputs) -> [(label, work unit settings, positional arguments of the task call)]; each work unit
+runs in <stage dir>/<label>.
 """
 import os
 

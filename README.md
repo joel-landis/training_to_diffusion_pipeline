@@ -40,13 +40,13 @@ A single stage runs with a config that holds only that stage:
 python -m pipeline.orchestrator examples/single_stage/md.toml
 ```
 
-A Python script can also call the task functions directly. They take the output directory, the input paths and the
-stage settings as keyword arguments, and return the output paths:
+A Python script can also call the task functions directly. They take the output directory, the input (one path, a list
+of paths, or none for `generate_clusters`) and the stage settings as keyword arguments, and return the output paths:
 
 ```python
 from pipeline import stages
 
-stages.md("md_run", ["start.traj"], name="md", model="mh-1", device="cuda", temperature_K=873.0, timestep_fs=1.0,
+stages.md("md_run", "start.traj", name="md", model="mh-1", device="cuda", temperature_K=873.0, timestep_fs=1.0,
           taut_fs=20.0, nsteps=2000, write_interval_fs=10.0, log_interval_fs=10.0)
 ```
 
